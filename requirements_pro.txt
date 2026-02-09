@@ -1,0 +1,36 @@
+# Requirements for AI Chatbot Pro v2.1
+# Python 3.8+
+
+# Core dependencies (standard library)
+# tkinter - GUI framework (comes with Python)
+# sqlite3 - Database (comes with Python)
+# json - Data handling (comes with Python)
+# datetime - Time management (comes with Python)
+# hashlib - Password hashing (comes with Python)
+# pathlib - Path handling (comes with Python)
+
+# PDF Export (REQUIRED for PDF export feature)
+reportlab>=4.0.0
+
+# AI Backends (OPTIONAL - install only what you need)
+# For OpenAI GPT-4 support:
+openai>=1.10.0
+
+# For Anthropic Claude support:
+anthropic>=0.18.0
+
+# Installation commands:
+# Basic (without AI or PDF):
+#   No installation needed! Uses only Python standard library
+
+# With PDF export:
+#   pip install reportlab
+
+# With OpenAI:
+#   pip install reportlab openai
+
+# With Anthropic Claude:
+#   pip install reportlab anthropic
+
+# With everything:
+#   pip install -r requirements.txt
