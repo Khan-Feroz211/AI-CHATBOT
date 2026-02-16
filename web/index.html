@@ -36,21 +36,21 @@
                 <div class="sidebar-section">
                     <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
                     <div class="quick-actions">
-                        <button class="action-btn" data-prompt="Help me plan a project timeline">
-                            <i class="fas fa-project-diagram"></i>
-                            <span>Project Plan</span>
+                        <button class="action-btn" data-prompt="Create a daily operations plan for managing stock, customer orders, and owner reports.">
+                            <i class="fas fa-clipboard-list"></i>
+                            <span>Ops Plan</span>
                         </button>
-                        <button class="action-btn" data-prompt="Generate code for a Python function">
-                            <i class="fas fa-code"></i>
-                            <span>Code Help</span>
+                        <button class="action-btn" data-prompt="Draft customer messages for price update, order confirmation, and delivery status.">
+                            <i class="fas fa-message"></i>
+                            <span>Customer Msgs</span>
                         </button>
-                        <button class="action-btn" data-prompt="Debug this error: ModuleNotFoundError">
-                            <i class="fas fa-bug"></i>
-                            <span>Debug</span>
+                        <button class="action-btn" data-prompt="Build an owner alert workflow for low stock, pending payments, and top-selling items.">
+                            <i class="fas fa-bell"></i>
+                            <span>Owner Alerts</span>
                         </button>
-                        <button class="action-btn" data-prompt="Explain machine learning concepts">
-                            <i class="fas fa-brain"></i>
-                            <span>ML Concepts</span>
+                        <button class="action-btn" data-prompt="Create a flexible package so I can sell this product to different businesses.">
+                            <i class="fas fa-briefcase"></i>
+                            <span>Sell Package</span>
                         </button>
                     </div>
                 </div>
@@ -83,6 +83,16 @@
                                 <option value="smb" selected>SMB</option>
                                 <option value="enterprise">Enterprise</option>
                                 <option value="agency">Agency</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label for="businessType">Business Use Case</label>
+                            <select id="businessType">
+                                <option value="general" selected>General Business</option>
+                                <option value="retail">Retail / Shop</option>
+                                <option value="restaurant">Restaurant / Cafe</option>
+                                <option value="clinic">Clinic / Pharmacy</option>
+                                <option value="service">Service Business</option>
                             </select>
                         </div>
                         <div class="setting-item">
@@ -122,23 +132,23 @@
                 <div class="welcome-message" id="welcomeMessage">
                     <div class="welcome-content">
                         <h2><i class="fas fa-sparkles"></i> Welcome to AI Project Assistant!</h2>
-                        <p>I'm your intelligent companion for project planning, coding help, debugging, and more. How can I assist you today?</p>
+                        <p>I help businesses run daily operations with chat, voice, file input, customer communication, and owner alerts. How can I help your business workflow today?</p>
                         <div class="welcome-features">
                             <div class="feature">
-                                <i class="fas fa-lightbulb"></i>
-                                <span>Project Planning</span>
+                                <i class="fas fa-boxes-stacked"></i>
+                                <span>Inventory & Records</span>
                             </div>
                             <div class="feature">
-                                <i class="fas fa-code"></i>
-                                <span>Code Generation</span>
+                                <i class="fas fa-comments"></i>
+                                <span>Customer Messaging</span>
                             </div>
                             <div class="feature">
-                                <i class="fas fa-bug"></i>
-                                <span>Debugging Help</span>
+                                <i class="fas fa-triangle-exclamation"></i>
+                                <span>Owner Alerts</span>
                             </div>
                             <div class="feature">
-                                <i class="fas fa-book"></i>
-                                <span>Learning Resources</span>
+                                <i class="fas fa-language"></i>
+                                <span>Multilingual Voice</span>
                             </div>
                         </div>
                     </div>
@@ -181,14 +191,14 @@
                         </div>
                         <div class="suggestions">
                             <span class="suggestion-label">Try asking:</span>
-                            <button class="suggestion-btn" data-prompt="Create a company-ready proposal to deploy this assistant for a customer support team.">
-                                Company proposal
+                            <button class="suggestion-btn" data-prompt="Create a plan to track items, prices, and remaining stock for this business.">
+                                Stock workflow
                             </button>
-                            <button class="suggestion-btn" data-prompt="Analyze this uploaded file and summarize risks, opportunities, and next actions.">
-                                Analyze file
+                            <button class="suggestion-btn" data-prompt="Write customer message templates for price list, order update, and payment reminder.">
+                                Customer templates
                             </button>
-                            <button class="suggestion-btn" data-prompt="Build a multilingual voice workflow for Pashto, Sindhi, and English users.">
-                                Voice workflow
+                            <button class="suggestion-btn" data-prompt="Generate owner daily report format with low-stock and revenue alerts.">
+                                Owner report
                             </button>
                         </div>
                         <div class="typing-indicator" id="typingIndicator">
@@ -209,7 +219,7 @@
             <div class="footer-content">
                 <div class="footer-section">
                     <h4>AI Project Assistant v2.0</h4>
-                    <p>Advanced AI-powered chatbot for project management and development assistance</p>
+                    <p>Flexible business operations assistant for retail, services, and multi-team workflows</p>
                 </div>
                 <div class="footer-section">
                     <div class="footer-links">
@@ -234,11 +244,11 @@
             <h3><i class="fas fa-question-circle"></i> Help & Instructions</h3>
             <p>This AI assistant can help you with:</p>
             <ul>
-                <li>Project planning and timeline creation</li>
-                <li>Code generation and debugging</li>
-                <li>Technical concept explanations</li>
-                <li>Research and learning resources</li>
-                <li>Task management and organization</li>
+                <li>Inventory and operational tracking</li>
+                <li>Customer messages for price and order updates</li>
+                <li>Owner alerts for low stock and pending actions</li>
+                <li>Business-specific workflows (retail, clinic, service, and more)</li>
+                <li>Voice + file-driven process assistance</li>
             </ul>
             <button class="modal-close" id="closeHelp">Got it!</button>
         </div>
