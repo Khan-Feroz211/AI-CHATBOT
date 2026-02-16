@@ -457,6 +457,12 @@ input:checked + .slider:before {
     background: rgba(67, 97, 238, 0.1);
 }
 
+.input-btn.recording {
+    color: white;
+    background: var(--warning-color);
+    animation: pulse 1.2s infinite;
+}
+
 textarea {
     flex: 1;
     border: none;
@@ -496,6 +502,24 @@ textarea::placeholder {
 
 .input-footer {
     margin-top: 1rem;
+}
+
+.market-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: rgba(67, 97, 238, 0.08);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--primary-color);
+    border-radius: 12px;
+    padding: 0.7rem 0.9rem;
+    margin-bottom: 0.9rem;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+}
+
+.market-banner i {
+    color: var(--primary-color);
 }
 
 .suggestions {

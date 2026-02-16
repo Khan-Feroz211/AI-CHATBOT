@@ -1,10 +1,10 @@
-# ?? AI Project Assistant Pro
+# AI Project Assistant Pro
 
 A powerful AI-powered task management and productivity tool.
 
-## ?? Quick Start
+## Quick Start
 
-\\\ash
+```bash
 # Clone the repository
 git clone https://github.com/Khan-Feroz211/AI-CHATBOT.git
 cd AI-CHATBOT
@@ -22,39 +22,34 @@ python enhanced_chatbot_pro.py
 cd web
 python -m http.server 8000
 # Visit: http://localhost:8000
-\\\
+```
 
-## ? Features
+## Windows PowerShell (Path With Spaces)
 
-- ?? Task Management with priorities
-- ?? Smart note-taking with tags
-- ?? AI chat assistant (OpenAI/Anthropic)
-- ?? Guest mode (no registration needed)
-- ?? Analytics dashboard
-- ?? Export to PDF/Markdown
-- ?? Secure user authentication
+If your folder path has spaces (for example `C:\Users\Feroz Khan\...`), quote it:
 
-## ?? Requirements
+```powershell
+Set-Location "C:\Users\Feroz Khan\project-assistant-bot"
+python -m http.server 8000 --directory web
+```
+
+Visit: `http://127.0.0.1:8000`
+
+## Features
+
+- Task management with priorities
+- Smart note-taking with tags
+- AI chat assistant (OpenAI/Anthropic)
+- Guest mode (no registration needed)
+- Analytics dashboard
+- Export to PDF/Markdown
+- Secure user authentication
+
+## Requirements
 
 - Python 3.8+
-- See requirements.txt for dependencies
+- See `requirements.txt` for dependencies
 
-## ?? Usage
+## License
 
-### Guest Mode
-1. Launch the app
-2. Click "?? Start as Guest"
-3. Enjoy full features!
-
-### Registered User
-1. Click "?? Register"
-2. Create your account
-3. Your data is saved permanently
-
-## ?? License
-
-MIT License - see LICENSE file
-
-## ?? Credits
-
-Built with Python, Tkinter, and SQLite
+MIT License - see `LICENSE`
