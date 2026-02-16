@@ -12,8 +12,8 @@
 - [ ] Add collaborative features
 - [ ] Create mobile app version
 
-## Low Priority
-- [ ] Add more themes
-- [ ] Implement AI model switching
-- [ ] Add code syntax highlighting
-- [ ] Create tutorial/walkthrough
+## (Low Priority ## to be added lastly with some necessity)
+- [ ] Add more themes,
+- [ ] Implement AI model switching,
+- [ ] Add code syntax highlighting,
+- [ ] Create tutorial/walkthrough.

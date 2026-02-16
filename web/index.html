@@ -77,6 +77,27 @@
                     <h3><i class="fas fa-cogs"></i> Settings</h3>
                     <div class="settings">
                         <div class="setting-item">
+                            <label for="companyMode">Company Mode</label>
+                            <select id="companyMode">
+                                <option value="startup">Startup</option>
+                                <option value="smb" selected>SMB</option>
+                                <option value="enterprise">Enterprise</option>
+                                <option value="agency">Agency</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
+                            <label for="speechLanguage">Speech Language</label>
+                            <select id="speechLanguage">
+                                <option value="en-US" selected>English (US)</option>
+                                <option value="en-GB">English (UK)</option>
+                                <option value="ur-PK">Urdu</option>
+                                <option value="hi-IN">Hindi</option>
+                                <option value="ps-AF">Pashto</option>
+                                <option value="sd-PK">Sindhi</option>
+                                <option value="ar-SA">Arabic</option>
+                            </select>
+                        </div>
+                        <div class="setting-item">
                             <label for="voiceToggle">Voice Response</label>
                             <label class="switch">
                                 <input type="checkbox" id="voiceToggle">
@@ -131,6 +152,7 @@
                 <!-- Input Area -->
                 <div class="input-area">
                     <div class="input-wrapper">
+                        <input type="file" id="fileInput" hidden />
                         <div class="input-controls">
                             <button class="input-btn" id="attachBtn" title="Attach File">
                                 <i class="fas fa-paperclip"></i>
@@ -153,16 +175,20 @@
                         </button>
                     </div>
                     <div class="input-footer">
+                        <div class="market-banner">
+                            <i class="fas fa-briefcase"></i>
+                            <span id="marketBannerText">SMB demo mode active: practical delivery, pricing-friendly recommendations.</span>
+                        </div>
                         <div class="suggestions">
                             <span class="suggestion-label">Try asking:</span>
-                            <button class="suggestion-btn" data-prompt="How do I structure a React project?">
-                                React project structure
+                            <button class="suggestion-btn" data-prompt="Create a company-ready proposal to deploy this assistant for a customer support team.">
+                                Company proposal
                             </button>
-                            <button class="suggestion-btn" data-prompt="Create a Python API endpoint">
-                                Python API endpoint
+                            <button class="suggestion-btn" data-prompt="Analyze this uploaded file and summarize risks, opportunities, and next actions.">
+                                Analyze file
                             </button>
-                            <button class="suggestion-btn" data-prompt="Explain blockchain technology">
-                                Blockchain explained
+                            <button class="suggestion-btn" data-prompt="Build a multilingual voice workflow for Pashto, Sindhi, and English users.">
+                                Voice workflow
                             </button>
                         </div>
                         <div class="typing-indicator" id="typingIndicator">
