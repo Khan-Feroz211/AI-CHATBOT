@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportChatBtn = document.getElementById('exportChat');
     const viewHistoryBtn = document.getElementById('viewHistory');
     const companyMode = document.getElementById('companyMode');
+    const businessType = document.getElementById('businessType');
     const speechLanguage = document.getElementById('speechLanguage');
     const marketBannerText = document.getElementById('marketBannerText');
     const responseSpeed = document.getElementById('responseSpeed');
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let recognition = null;
     let isRecording = false;
     let selectedCompanyMode = localStorage.getItem('companyMode') || 'smb';
+    let selectedBusinessType = localStorage.getItem('businessType') || 'general';
     let selectedSpeechLanguage = localStorage.getItem('speechLanguage') || 'en-US';
 
     const companyProfiles = {
@@ -52,6 +54,44 @@ document.addEventListener('DOMContentLoaded', () => {
             label: 'Agency',
             banner: 'Agency demo mode active: client reporting, multi-project workflow, and handoff.',
             style: 'Highlight repeatable delivery, client transparency, and service packaging.'
+        }
+    };
+
+    const businessContexts = {
+        general: {
+            label: 'General Business',
+            inventoryUnit: 'items',
+            customerLabel: 'customers',
+            ownerLabel: 'owner or manager',
+            example: 'products/services, pending tasks, and daily revenue updates'
+        },
+        retail: {
+            label: 'Retail / Shop',
+            inventoryUnit: 'stock units',
+            customerLabel: 'walk-in and WhatsApp customers',
+            ownerLabel: 'shop owner',
+            example: 'SKU stock, price list, and low-stock product alerts'
+        },
+        restaurant: {
+            label: 'Restaurant / Cafe',
+            inventoryUnit: 'ingredient units',
+            customerLabel: 'dine-in and delivery customers',
+            ownerLabel: 'restaurant owner',
+            example: 'ingredient usage, menu updates, and order queue alerts'
+        },
+        clinic: {
+            label: 'Clinic / Pharmacy',
+            inventoryUnit: 'medicine units',
+            customerLabel: 'patients and buyers',
+            ownerLabel: 'clinic owner',
+            example: 'medicine stock, prescription-ready status, and refill alerts'
+        },
+        service: {
+            label: 'Service Business',
+            inventoryUnit: 'service slots',
+            customerLabel: 'clients',
+            ownerLabel: 'business owner',
+            example: 'bookings, pricing plans, and follow-up reminders'
         }
     };
 
@@ -83,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     exportChatBtn.addEventListener('click', exportChat);
     viewHistoryBtn.addEventListener('click', showHistorySnapshot);
     companyMode.addEventListener('change', updateCompanyMode);
+    businessType.addEventListener('change', updateBusinessType);
     speechLanguage.addEventListener('change', updateSpeechLanguage);
 
     voiceToggle.addEventListener('change', function () {
@@ -107,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function initSavedPreferences() {
         companyMode.value = selectedCompanyMode;
+        businessType.value = selectedBusinessType;
         speechLanguage.value = selectedSpeechLanguage;
         applyCompanyBanner(selectedCompanyMode);
     }
@@ -206,22 +248,74 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function generateAIResponse(userMessage) {
         const profile = companyProfiles[selectedCompanyMode] || companyProfiles.smb;
+        const context = businessContexts[selectedBusinessType] || businessContexts.general;
         const lower = userMessage.toLowerCase();
 
         const fileContext = attachedFiles.length
             ? `\n\nFile context loaded (${attachedFiles.length}): ${attachedFiles.map((f) => f.name).join(', ')}.`
             : '';
 
-        if (lower.includes('proposal') || lower.includes('company') || lower.includes('sell')) {
+        if (lower.includes('proposal') || lower.includes('company') || lower.includes('sell') || lower.includes('package')) {
             return [
-                `Here is a ${profile.label}-focused market pitch:`,
+                `Here is a ${profile.label} market pitch for ${context.label}:`,
                 '',
-                '1. **Problem**: Teams lose time across scattered chat, files, and meetings.',
-                '2. **Solution**: This assistant combines chat, voice input, and file analysis in one workspace.',
-                '3. **Business Value**: Faster decisions, less manual reporting, improved team productivity.',
-                `4. **Delivery Style**: ${profile.style}`,
-                '5. **Offer Structure**: Setup + monthly support + optional custom integrations.',
+                '1. **Problem**: Teams lose time across calls, chats, notebooks, and manual reporting.',
+                '2. **Solution**: One assistant for records, customer messaging, and owner alerts.',
+                `3. **Use-Case Fit**: ${context.example}.`,
+                '4. **Business Value**: faster response time, clearer operations, and fewer stock/process misses.',
+                `5. **Delivery Style**: ${profile.style}`,
+                '6. **Offer Structure**: onboarding + monthly support + optional integrations.',
                 fileContext
+            ].join('\n');
+        }
+
+        if (lower.includes('inventory') || lower.includes('stock') || lower.includes('item') || lower.includes('remaining')) {
+            return [
+                `Inventory workflow for ${context.label}:`,
+                '',
+                '**Fields to store**',
+                '- Item name / code',
+                '- Quantity in hand',
+                '- Purchase cost and selling price',
+                '- Reorder threshold',
+                '- Supplier and last update date',
+                '',
+                '**Daily process**',
+                `1. Add incoming ${context.inventoryUnit}.`,
+                '2. Deduct sold/used quantities.',
+                '3. Auto-flag items below threshold.',
+                `4. Send summary to ${context.ownerLabel} with urgent restock list.`,
+                fileContext
+            ].join('\n');
+        }
+
+        if (lower.includes('customer') || lower.includes('price') || lower.includes('message') || lower.includes('whatsapp')) {
+            return [
+                `Customer communication templates for ${context.customerLabel}:`,
+                '',
+                '**Price update**',
+                '`Hello, our updated price list is now available. Reply with item/service name for instant quote.`',
+                '',
+                '**Order update**',
+                '`Your order is confirmed and in process. Estimated completion/delivery: [time].`',
+                '',
+                '**Payment reminder**',
+                '`Friendly reminder: pending amount [amount]. Please pay by [date]. Thank you.`',
+                '',
+                `Use voice input + multilingual mode to draft these quickly for your team.`
+            ].join('\n');
+        }
+
+        if (lower.includes('owner') || lower.includes('alert') || lower.includes('report') || lower.includes('dashboard')) {
+            return [
+                `Owner alert structure for ${context.label}:`,
+                '',
+                '- **Low stock alert**: item reaches threshold.',
+                '- **Daily sales summary**: total sales, cash/online split, top performers.',
+                '- **Pending actions**: unpaid invoices, delayed orders, failed follow-ups.',
+                '- **Risk watch**: no-stock fast-moving items and unusual drop in sales.',
+                '',
+                `Delivery channels: in-app summary + WhatsApp/Email message to ${context.ownerLabel}.`
             ].join('\n');
         }
 
@@ -234,18 +328,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 .map((f) => `- **${f.name}**: ${truncateText(f.content, 220)}`)
                 .join('\n');
             return [
-                `I reviewed your uploaded file content for ${profile.label} usage.`,
+                `I reviewed your uploaded file content for ${context.label} operations.`,
                 '',
                 '**Summary**',
                 snippets,
                 '',
-                '**Business Risks**',
-                '- Missing process ownership can delay rollouts.',
-                '- Unclear KPIs reduce executive confidence.',
+                '**Operational Risks**',
+                '- Missing owner assignment can delay actions.',
+                '- No threshold rules can cause sudden stock/service gaps.',
                 '',
                 '**Next Actions**',
-                '- Define owner, timeline, and measurable outcomes.',
-                '- Run a 2-week pilot with a success metric dashboard.'
+                '- Define fields, owner, and update frequency.',
+                '- Run a 2-week pilot with alert accuracy and response time tracking.'
             ].join('\n');
         }
 
@@ -263,25 +357,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (lower.includes('plan') || lower.includes('project')) {
             return [
-                `Project delivery plan for ${profile.label}:`,
+                `Implementation plan for ${context.label} (${profile.label}):`,
                 '',
-                '1. **Discovery**: clarify use cases and success metrics.',
-                '2. **Pilot**: deploy chat + file + voice with one team.',
-                '3. **Optimization**: refine prompts and workflow automation.',
-                '4. **Scale**: onboard other departments with role-based playbooks.',
+                '1. **Discovery**: map records, communication flow, and owner decisions.',
+                '2. **Pilot**: deploy chat + file + voice with one team/location.',
+                '3. **Automation**: standardize templates and alert rules.',
+                '4. **Scale**: onboard additional teams with role-based access.',
                 fileContext
             ].join('\n');
         }
 
         return [
-            `I can help you present this as a sellable ${profile.label} solution.`,
+            `I can help you sell this as a flexible ${profile.label} solution for ${context.label}.`,
             '',
-            '- Build market proposal and packaging',
-            '- Analyze uploaded files for insights',
-            '- Run multilingual speech recognition workflow',
-            '- Create implementation timeline and pricing approach',
+            '- Manage inventory/records and remaining items',
+            '- Generate customer messages for prices and updates',
+            '- Send owner alerts for low stock and pending actions',
+            '- Run multilingual voice and file-driven workflows',
             '',
-            'Tell me your target company type, and I will tailor the pitch.'
+            'Tell me the business size and use case, and I will tailor the package.'
         ].join('\n');
     }
 
@@ -418,9 +512,18 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(`Company mode: ${(companyProfiles[selectedCompanyMode] || {}).label || 'SMB'}`, 'success');
     }
 
+    function updateBusinessType() {
+        selectedBusinessType = businessType.value;
+        localStorage.setItem('businessType', selectedBusinessType);
+        applyCompanyBanner(selectedCompanyMode);
+        const label = (businessContexts[selectedBusinessType] || {}).label || 'General Business';
+        showNotification(`Business use case: ${label}`, 'info');
+    }
+
     function applyCompanyBanner(mode) {
         const profile = companyProfiles[mode] || companyProfiles.smb;
-        marketBannerText.textContent = profile.banner;
+        const context = businessContexts[selectedBusinessType] || businessContexts.general;
+        marketBannerText.textContent = `${profile.banner} Active use case: ${context.label}.`;
     }
 
     function updateSpeechLanguage() {
@@ -554,7 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => {
         if (!chatHistory.length) {
-            showNotification('Welcome. Use company mode + voice + file upload to run your market demo.', 'info');
+            showNotification('Welcome. Select company mode and business use case to run a buyer-ready demo.', 'info');
         }
     }, 900);
 });
