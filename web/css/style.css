@@ -7,36 +7,36 @@
 
 :root {
     /* Light Theme Variables */
-    --primary-color: #4361ee;
-    --secondary-color: #3a0ca3;
-    --accent-color: #7209b7;
-    --success-color: #4cc9f0;
-    --warning-color: #f72585;
-    --background-color: #f8f9fa;
+    --primary-color: #0f6d3f;
+    --secondary-color: #0b4f2d;
+    --accent-color: #198754;
+    --success-color: #20c997;
+    --warning-color: #d97706;
+    --background-color: #f4fbf7;
     --surface-color: #ffffff;
-    --text-primary: #212529;
-    --text-secondary: #6c757d;
-    --border-color: #e9ecef;
+    --text-primary: #153a27;
+    --text-secondary: #4f6d5e;
+    --border-color: #d7e7de;
     --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    --gradient-primary: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
-    --gradient-accent: linear-gradient(135deg, #7209b7 0%, #f72585 100%);
+    --gradient-primary: linear-gradient(135deg, #0f6d3f 0%, #198754 100%);
+    --gradient-accent: linear-gradient(135deg, #198754 0%, #0b4f2d 100%);
 }
 
 [data-theme="dark"] {
     /* Dark Theme Variables */
-    --primary-color: #5a6ff0;
-    --secondary-color: #4a1db6;
-    --accent-color: #8a2be2;
-    --success-color: #00d4ff;
-    --warning-color: #ff2d95;
-    --background-color: #121212;
-    --surface-color: #1e1e1e;
-    --text-primary: #e9ecef;
-    --text-secondary: #adb5bd;
-    --border-color: #343a40;
+    --primary-color: #2a9d6f;
+    --secondary-color: #1f7c57;
+    --accent-color: #31b17b;
+    --success-color: #3ddc97;
+    --warning-color: #f59e0b;
+    --background-color: #0f1c16;
+    --surface-color: #13251d;
+    --text-primary: #eaf5ef;
+    --text-secondary: #b4c8bc;
+    --border-color: #284338;
     --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    --gradient-primary: linear-gradient(135deg, #5a6ff0 0%, #4a1db6 100%);
-    --gradient-accent: linear-gradient(135deg, #8a2be2 0%, #ff2d95 100%);
+    --gradient-primary: linear-gradient(135deg, #1f7c57 0%, #2a9d6f 100%);
+    --gradient-accent: linear-gradient(135deg, #2a9d6f 0%, #1f7c57 100%);
 }
 
 body {

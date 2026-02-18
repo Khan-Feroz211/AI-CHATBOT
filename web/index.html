@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Project Assistant | Advanced Chatbot</title>
+    <title>AI Project Assistant Pakistan | Seller Copilot</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
         <header class="header">
             <div class="logo">
                 <i class="fas fa-robot"></i>
-                <h1>AI Project Assistant</h1>
+                <h1>AI Seller Copilot (Pakistan)</h1>
             </div>
             <div class="header-controls">
                 <button id="themeToggle" class="theme-btn">
@@ -34,21 +34,21 @@
             <!-- Sidebar -->
             <aside class="sidebar">
                 <div class="sidebar-section">
-                    <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
+                    <h3><i class="fas fa-bolt"></i> Pakistan Quick Actions</h3>
                     <div class="quick-actions">
-                        <button class="action-btn" data-prompt="Create a daily operations plan for managing stock, customer orders, and owner reports.">
+                        <button class="action-btn" data-prompt="Create a daily dukaan operations plan for stock, customer orders, and owner summary in Pakistan market style.">
                             <i class="fas fa-clipboard-list"></i>
                             <span>Ops Plan</span>
                         </button>
-                        <button class="action-btn" data-prompt="Draft customer messages for price update, order confirmation, and delivery status.">
+                        <button class="action-btn" data-prompt="Draft Urdu + English customer messages for price update, order confirmation, and delivery status on WhatsApp.">
                             <i class="fas fa-message"></i>
                             <span>Customer Msgs</span>
                         </button>
-                        <button class="action-btn" data-prompt="Build an owner alert workflow for low stock, pending payments, and top-selling items.">
+                        <button class="action-btn" data-prompt="Build an owner alert workflow for low stock, pending JazzCash/EasyPaisa payments, and top-selling items.">
                             <i class="fas fa-bell"></i>
                             <span>Owner Alerts</span>
                         </button>
-                        <button class="action-btn" data-prompt="Create a flexible package so I can sell this product to different businesses.">
+                        <button class="action-btn" data-prompt="Create a flexible sell package for Pakistani kiryana stores, pharmacies, and service businesses.">
                             <i class="fas fa-briefcase"></i>
                             <span>Sell Package</span>
                         </button>
@@ -86,10 +86,10 @@
                             </select>
                         </div>
                         <div class="setting-item">
-                            <label for="businessType">Business Use Case</label>
+                            <label for="businessType">Business Use Case (Pakistan)</label>
                             <select id="businessType">
                                 <option value="general" selected>General Business</option>
-                                <option value="retail">Retail / Shop</option>
+                                <option value="retail">Kiryana / Retail Shop</option>
                                 <option value="restaurant">Restaurant / Cafe</option>
                                 <option value="clinic">Clinic / Pharmacy</option>
                                 <option value="service">Service Business</option>
@@ -98,12 +98,12 @@
                         <div class="setting-item">
                             <label for="speechLanguage">Speech Language</label>
                             <select id="speechLanguage">
-                                <option value="en-US" selected>English (US)</option>
-                                <option value="en-GB">English (UK)</option>
-                                <option value="ur-PK">Urdu</option>
+                                <option value="en-US">English (US)</option>
+                                <option value="ur-PK" selected>Urdu (Pakistan)</option>
                                 <option value="hi-IN">Hindi</option>
                                 <option value="ps-AF">Pashto</option>
                                 <option value="sd-PK">Sindhi</option>
+                                <option value="pa-PK">Punjabi (Pakistan)</option>
                                 <option value="ar-SA">Arabic</option>
                             </select>
                         </div>
@@ -122,6 +122,15 @@
                                 <option value="slow">Slow (Detailed)</option>
                             </select>
                         </div>
+                        <div class="setting-item">
+                            <label for="paymentMethod">Payment Method</label>
+                            <select id="paymentMethod">
+                                <option value="jazzcash" selected>JazzCash</option>
+                                <option value="easypaisa">EasyPaisa</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                                <option value="cod">Cash on Delivery</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -131,24 +140,24 @@
                 <!-- Welcome Message -->
                 <div class="welcome-message" id="welcomeMessage">
                     <div class="welcome-content">
-                        <h2><i class="fas fa-sparkles"></i> Welcome to AI Project Assistant!</h2>
-                        <p>I help businesses run daily operations with chat, voice, file input, customer communication, and owner alerts. How can I help your business workflow today?</p>
+                        <h2><i class="fas fa-sparkles"></i> Welcome to AI Seller Copilot Pakistan!</h2>
+                        <p>I help Pakistani businesses run daily operations with stock tracking, WhatsApp customer messages, PKR pricing, and owner alerts. How can I support your business today?</p>
                         <div class="welcome-features">
                             <div class="feature">
                                 <i class="fas fa-boxes-stacked"></i>
-                                <span>Inventory & Records</span>
+                                <span>Stock & Records</span>
                             </div>
                             <div class="feature">
                                 <i class="fas fa-comments"></i>
-                                <span>Customer Messaging</span>
+                                <span>WhatsApp Messaging</span>
                             </div>
                             <div class="feature">
                                 <i class="fas fa-triangle-exclamation"></i>
-                                <span>Owner Alerts</span>
+                                <span>Owner Risk Alerts</span>
                             </div>
                             <div class="feature">
                                 <i class="fas fa-language"></i>
-                                <span>Multilingual Voice</span>
+                                <span>Urdu + Local Voice</span>
                             </div>
                         </div>
                     </div>
@@ -187,18 +196,21 @@
                     <div class="input-footer">
                         <div class="market-banner">
                             <i class="fas fa-briefcase"></i>
-                            <span id="marketBannerText">SMB demo mode active: practical delivery, pricing-friendly recommendations.</span>
+                            <span id="marketBannerText">Pakistan SMB mode active: practical delivery with PKR pricing and WhatsApp-first workflow.</span>
                         </div>
                         <div class="suggestions">
                             <span class="suggestion-label">Try asking:</span>
-                            <button class="suggestion-btn" data-prompt="Create a plan to track items, prices, and remaining stock for this business.">
+                            <button class="suggestion-btn" data-prompt="Create a PKR-based stock workflow to track items, retail price, wholesale price, and remaining stock.">
                                 Stock workflow
                             </button>
-                            <button class="suggestion-btn" data-prompt="Write customer message templates for price list, order update, and payment reminder.">
+                            <button class="suggestion-btn" data-prompt="Write Urdu + English customer message templates for price list, order update, and payment reminder.">
                                 Customer templates
                             </button>
-                            <button class="suggestion-btn" data-prompt="Generate owner daily report format with low-stock and revenue alerts.">
+                            <button class="suggestion-btn" data-prompt="Generate owner daily report format with low-stock alerts, PKR revenue, and pending JazzCash/EasyPaisa payments.">
                                 Owner report
+                            </button>
+                            <button class="suggestion-btn" data-prompt="Create a payment link for order ORD-1001 amount PKR 3500 using selected payment method.">
+                                Payment link
                             </button>
                         </div>
                         <div class="typing-indicator" id="typingIndicator">
@@ -218,8 +230,8 @@
         <footer class="footer">
             <div class="footer-content">
                 <div class="footer-section">
-                    <h4>AI Project Assistant v2.0</h4>
-                    <p>Flexible business operations assistant for retail, services, and multi-team workflows</p>
+                    <h4>AI Seller Copilot Pakistan v2.1</h4>
+                    <p>Business operations assistant for kiryana shops, pharmacies, services, and local teams</p>
                 </div>
                 <div class="footer-section">
                     <div class="footer-links">
@@ -231,7 +243,7 @@
                 <div class="footer-section">
                     <p class="status-indicator">
                         <i class="fas fa-circle status-online"></i>
-                        <span>System Status: <strong>Online</strong></span>
+                        <span>System Status: <strong>Online (Pakistan Profile)</strong></span>
                     </p>
                 </div>
             </div>
@@ -242,13 +254,13 @@
     <div class="modal" id="helpModal">
         <div class="modal-content">
             <h3><i class="fas fa-question-circle"></i> Help & Instructions</h3>
-            <p>This AI assistant can help you with:</p>
+            <p>This AI assistant can help Pakistani sellers with:</p>
             <ul>
-                <li>Inventory and operational tracking</li>
-                <li>Customer messages for price and order updates</li>
-                <li>Owner alerts for low stock and pending actions</li>
-                <li>Business-specific workflows (retail, clinic, service, and more)</li>
-                <li>Voice + file-driven process assistance</li>
+                <li>Inventory and daily operational tracking in PKR</li>
+                <li>Urdu + English customer messages for prices and order updates</li>
+                <li>Owner alerts for low stock and pending payments</li>
+                <li>Business workflows for kiryana, clinic, restaurant, and services</li>
+                <li>Voice + file-driven process assistance for local teams</li>
             </ul>
             <button class="modal-close" id="closeHelp">Got it!</button>
         </div>

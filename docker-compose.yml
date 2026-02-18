@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: project-assistant-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - PAYMENT_SANDBOX_MODE=${PAYMENT_SANDBOX_MODE:-true}
+      - JAZZCASH_MERCHANT_ID=${JAZZCASH_MERCHANT_ID:-}
+      - JAZZCASH_PASSWORD=${JAZZCASH_PASSWORD:-}
+      - JAZZCASH_INTEGRITY_SALT=${JAZZCASH_INTEGRITY_SALT:-}
+      - EASYPAISA_STORE_ID=${EASYPAISA_STORE_ID:-}
+      - EASYPAISA_HASH_KEY=${EASYPAISA_HASH_KEY:-}
+      - BANK_TRANSFER_BANK_NAME=${BANK_TRANSFER_BANK_NAME:-}
+      - BANK_TRANSFER_ACCOUNT_TITLE=${BANK_TRANSFER_ACCOUNT_TITLE:-}
+      - BANK_TRANSFER_IBAN=${BANK_TRANSFER_IBAN:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: project-assistant-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped

@@ -22,37 +22,42 @@ document.addEventListener('DOMContentLoaded', () => {
     const speechLanguage = document.getElementById('speechLanguage');
     const marketBannerText = document.getElementById('marketBannerText');
     const responseSpeed = document.getElementById('responseSpeed');
+    const paymentMethod = document.getElementById('paymentMethod');
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const API_BASE_URL = localStorage.getItem('apiBaseUrl') || 'http://127.0.0.1:8000';
 
     let currentTheme = localStorage.getItem('theme') || 'light';
     let chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
     let attachedFiles = [];
     let recognition = null;
     let isRecording = false;
+    let finalizedTranscript = '';
+    let bestConfidence = 0;
     let selectedCompanyMode = localStorage.getItem('companyMode') || 'smb';
     let selectedBusinessType = localStorage.getItem('businessType') || 'general';
-    let selectedSpeechLanguage = localStorage.getItem('speechLanguage') || 'en-US';
+    let selectedSpeechLanguage = localStorage.getItem('speechLanguage') || 'ur-PK';
+    let selectedPaymentMethod = localStorage.getItem('paymentMethod') || 'jazzcash';
 
     const companyProfiles = {
         startup: {
             label: 'Startup',
-            banner: 'Startup demo mode active: fast MVP, lower cost, fast iteration roadmap.',
+            banner: 'Pakistan startup mode active: fast MVP, lower cost, and market-first execution.',
             style: 'Prioritize speed, lean architecture, and measurable MVP outcomes.'
         },
         smb: {
             label: 'SMB',
-            banner: 'SMB demo mode active: practical delivery, pricing-friendly recommendations.',
-            style: 'Focus on quick deployment, budget-fit decisions, and easy team adoption.'
+            banner: 'Pakistan SMB mode active: practical delivery, PKR pricing, WhatsApp-first recommendations.',
+            style: 'Focus on quick deployment, budget-fit decisions, and easy team adoption for local staff.'
         },
         enterprise: {
             label: 'Enterprise',
-            banner: 'Enterprise demo mode active: governance, security, and scale-ready design.',
+            banner: 'Pakistan enterprise mode active: governance, security, and scale-ready design.',
             style: 'Emphasize compliance, role-based access, integration, and reliability.'
         },
         agency: {
             label: 'Agency',
-            banner: 'Agency demo mode active: client reporting, multi-project workflow, and handoff.',
+            banner: 'Pakistan agency mode active: client reporting, multi-project workflow, and handoff.',
             style: 'Highlight repeatable delivery, client transparency, and service packaging.'
         }
     };
@@ -63,35 +68,35 @@ document.addEventListener('DOMContentLoaded', () => {
             inventoryUnit: 'items',
             customerLabel: 'customers',
             ownerLabel: 'owner or manager',
-            example: 'products/services, pending tasks, and daily revenue updates'
+            example: 'products/services, pending tasks, and daily PKR revenue updates'
         },
         retail: {
-            label: 'Retail / Shop',
+            label: 'Kiryana / Retail Shop',
             inventoryUnit: 'stock units',
             customerLabel: 'walk-in and WhatsApp customers',
             ownerLabel: 'shop owner',
-            example: 'SKU stock, price list, and low-stock product alerts'
+            example: 'SKU stock, price list in PKR, and low-stock product alerts'
         },
         restaurant: {
             label: 'Restaurant / Cafe',
             inventoryUnit: 'ingredient units',
             customerLabel: 'dine-in and delivery customers',
             ownerLabel: 'restaurant owner',
-            example: 'ingredient usage, menu updates, and order queue alerts'
+            example: 'ingredient usage, menu updates in PKR, and order queue alerts'
         },
         clinic: {
             label: 'Clinic / Pharmacy',
             inventoryUnit: 'medicine units',
             customerLabel: 'patients and buyers',
             ownerLabel: 'clinic owner',
-            example: 'medicine stock, prescription-ready status, and refill alerts'
+            example: 'medicine stock, prescription-ready status, and refill/payment alerts'
         },
         service: {
             label: 'Service Business',
             inventoryUnit: 'service slots',
             customerLabel: 'clients',
             ownerLabel: 'business owner',
-            example: 'bookings, pricing plans, and follow-up reminders'
+            example: 'bookings, pricing plans in PKR, and follow-up reminders'
         }
     };
 
@@ -125,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
     companyMode.addEventListener('change', updateCompanyMode);
     businessType.addEventListener('change', updateBusinessType);
     speechLanguage.addEventListener('change', updateSpeechLanguage);
+    paymentMethod.addEventListener('change', updatePaymentMethod);
 
     voiceToggle.addEventListener('change', function () {
         const msg = this.checked ? 'Voice response enabled' : 'Voice response disabled';
@@ -150,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         companyMode.value = selectedCompanyMode;
         businessType.value = selectedBusinessType;
         speechLanguage.value = selectedSpeechLanguage;
+        paymentMethod.value = selectedPaymentMethod;
         applyCompanyBanner(selectedCompanyMode);
     }
 
@@ -236,9 +243,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const charWeight = speedMap[responseSpeed.value] || speedMap.normal;
         const thinkingTime = Math.min(Math.max(userMessage.length * charWeight, 500), 4500);
 
-        setTimeout(() => {
+        setTimeout(async () => {
             typingIndicator.style.display = 'none';
-            const response = generateAIResponse(userMessage);
+            const response = await generateAIResponse(userMessage);
             addMessage(response, 'ai');
             updateAnalytics();
             saveChatHistory();
@@ -246,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, thinkingTime);
     }
 
-    function generateAIResponse(userMessage) {
+    async function generateAIResponse(userMessage) {
         const profile = companyProfiles[selectedCompanyMode] || companyProfiles.smb;
         const context = businessContexts[selectedBusinessType] || businessContexts.general;
         const lower = userMessage.toLowerCase();
@@ -256,27 +263,27 @@ document.addEventListener('DOMContentLoaded', () => {
             : '';
 
         if (lower.includes('proposal') || lower.includes('company') || lower.includes('sell') || lower.includes('package')) {
-            return [
+            return localizeForLanguage([
                 `Here is a ${profile.label} market pitch for ${context.label}:`,
                 '',
-                '1. **Problem**: Teams lose time across calls, chats, notebooks, and manual reporting.',
-                '2. **Solution**: One assistant for records, customer messaging, and owner alerts.',
+                '1. **Problem**: Pakistani teams lose time across calls, WhatsApp chats, notebooks, and manual reporting.',
+                '2. **Solution**: One assistant for records, customer messaging, PKR pricing, and owner alerts.',
                 `3. **Use-Case Fit**: ${context.example}.`,
                 '4. **Business Value**: faster response time, clearer operations, and fewer stock/process misses.',
                 `5. **Delivery Style**: ${profile.style}`,
-                '6. **Offer Structure**: onboarding + monthly support + optional integrations.',
+                '6. **Offer Structure**: onboarding + monthly support + optional integrations (WhatsApp + POS where needed).',
                 fileContext
-            ].join('\n');
+            ].join('\n'));
         }
 
         if (lower.includes('inventory') || lower.includes('stock') || lower.includes('item') || lower.includes('remaining')) {
-            return [
+            return localizeForLanguage([
                 `Inventory workflow for ${context.label}:`,
                 '',
                 '**Fields to store**',
                 '- Item name / code',
                 '- Quantity in hand',
-                '- Purchase cost and selling price',
+                '- Purchase cost and selling price (PKR)',
                 '- Reorder threshold',
                 '- Supplier and last update date',
                 '',
@@ -286,48 +293,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 '3. Auto-flag items below threshold.',
                 `4. Send summary to ${context.ownerLabel} with urgent restock list.`,
                 fileContext
-            ].join('\n');
+            ].join('\n'));
         }
 
         if (lower.includes('customer') || lower.includes('price') || lower.includes('message') || lower.includes('whatsapp')) {
-            return [
+            return localizeForLanguage([
                 `Customer communication templates for ${context.customerLabel}:`,
                 '',
                 '**Price update**',
-                '`Hello, our updated price list is now available. Reply with item/service name for instant quote.`',
+                '`Assalam-o-Alaikum! Updated price list (PKR) is available. Reply with item/service name for instant quote.`',
                 '',
                 '**Order update**',
-                '`Your order is confirmed and in process. Estimated completion/delivery: [time].`',
+                '`Your order is confirmed and in process. Estimated completion/delivery: [time]. Shukriya!`',
                 '',
                 '**Payment reminder**',
-                '`Friendly reminder: pending amount [amount]. Please pay by [date]. Thank you.`',
+                '`Friendly reminder: pending amount PKR [amount]. Please pay by [date] via JazzCash, EasyPaisa, or bank transfer.`',
                 '',
-                `Use voice input + multilingual mode to draft these quickly for your team.`
-            ].join('\n');
+                'Use voice input + multilingual mode to draft these quickly for your team.'
+            ].join('\n'));
         }
 
         if (lower.includes('owner') || lower.includes('alert') || lower.includes('report') || lower.includes('dashboard')) {
-            return [
+            return localizeForLanguage([
                 `Owner alert structure for ${context.label}:`,
                 '',
                 '- **Low stock alert**: item reaches threshold.',
-                '- **Daily sales summary**: total sales, cash/online split, top performers.',
+                '- **Daily sales summary**: total PKR sales, cash/online split, top performers.',
                 '- **Pending actions**: unpaid invoices, delayed orders, failed follow-ups.',
                 '- **Risk watch**: no-stock fast-moving items and unusual drop in sales.',
                 '',
                 `Delivery channels: in-app summary + WhatsApp/Email message to ${context.ownerLabel}.`
-            ].join('\n');
+            ].join('\n'));
         }
 
         if (lower.includes('file') || lower.includes('document') || lower.includes('analy')) {
             if (!attachedFiles.length) {
-                return 'Please attach a file first, then ask for analysis. I can summarize content, risks, and next actions.';
+                return localizeForLanguage('Please attach a file first, then ask for analysis. I can summarize content, risks, and next actions.');
             }
             const snippets = attachedFiles
                 .slice(0, 2)
                 .map((f) => `- **${f.name}**: ${truncateText(f.content, 220)}`)
                 .join('\n');
-            return [
+            return localizeForLanguage([
                 `I reviewed your uploaded file content for ${context.label} operations.`,
                 '',
                 '**Summary**',
@@ -340,23 +347,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 '**Next Actions**',
                 '- Define fields, owner, and update frequency.',
                 '- Run a 2-week pilot with alert accuracy and response time tracking.'
-            ].join('\n');
+            ].join('\n'));
         }
 
         if (lower.includes('voice') || lower.includes('speech') || lower.includes('pashto') || lower.includes('sindhi')) {
-            return [
+            return localizeForLanguage([
                 `Multilingual voice flow is enabled for ${profile.label} mode.`,
                 '',
                 '- Use the microphone button to start speech-to-text.',
-                '- Select language from Settings (`Pashto - ps-AF`, `Sindhi - sd-PK`, and others).',
+                '- Select language from Settings (`Urdu - ur-PK`, `Pashto - ps-AF`, `Sindhi - sd-PK`, `Punjabi - pa-PK`).',
                 '- Voice output can be toggled on with "Voice Response".',
                 '',
                 'If your browser does not support a locale directly, fallback recognition quality may vary by engine.'
-            ].join('\n');
+            ].join('\n'));
+        }
+
+        if (
+            lower.includes('payment') ||
+            lower.includes('jazzcash') ||
+            lower.includes('easypaisa') ||
+            lower.includes('cod') ||
+            lower.includes('bank transfer')
+        ) {
+            const amountMatch = userMessage.match(/(\d+(?:\.\d+)?)/);
+            const amount = amountMatch ? Number(amountMatch[1]) : 1000;
+            const orderMatch = userMessage.match(/ORD[-_ ]?\d+/i);
+            const orderId = orderMatch ? orderMatch[0].replace(/\s+/g, '') : `ORD-${Date.now()}`;
+            const paymentReply = await createPaymentRequest(orderId, amount);
+            return localizeForLanguage(paymentReply);
         }
 
         if (lower.includes('plan') || lower.includes('project')) {
-            return [
+            return localizeForLanguage([
                 `Implementation plan for ${context.label} (${profile.label}):`,
                 '',
                 '1. **Discovery**: map records, communication flow, and owner decisions.',
@@ -364,19 +386,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 '3. **Automation**: standardize templates and alert rules.',
                 '4. **Scale**: onboard additional teams with role-based access.',
                 fileContext
-            ].join('\n');
+            ].join('\n'));
         }
 
-        return [
+        return localizeForLanguage([
             `I can help you sell this as a flexible ${profile.label} solution for ${context.label}.`,
             '',
             '- Manage inventory/records and remaining items',
-            '- Generate customer messages for prices and updates',
+            '- Generate Urdu + English customer messages for prices and updates',
             '- Send owner alerts for low stock and pending actions',
             '- Run multilingual voice and file-driven workflows',
             '',
-            'Tell me the business size and use case, and I will tailor the package.'
-        ].join('\n');
+            'Tell me the business size and use case, and I will tailor the package for Pakistan market.'
+        ].join('\n'));
+    }
+
+    function localizeForLanguage(text) {
+        if (selectedSpeechLanguage !== 'ur-PK') return text;
+        const urduPrefix = 'Urdu mode active: Pakistan market friendly response.\n\n';
+        return `${urduPrefix}${text}`;
     }
 
     function truncateText(text, maxLength) {
@@ -456,22 +484,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function initSpeechRecognition() {
-        if (!SpeechRecognition) return;
+        if (!SpeechRecognition) {
+            voiceBtn.disabled = true;
+            voiceBtn.title = 'Speech recognition not supported in this browser';
+            return;
+        }
         recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = true;
+        recognition.maxAlternatives = 3;
         recognition.lang = selectedSpeechLanguage;
 
+        recognition.onstart = () => {
+            isRecording = true;
+            voiceBtn.classList.add('recording');
+            showNotification(`Listening in ${recognition.lang}`, 'info');
+        };
+
         recognition.onresult = (event) => {
-            let finalTranscript = '';
+            let currentInterim = '';
             let interimTranscript = '';
             for (let i = event.resultIndex; i < event.results.length; i += 1) {
                 const transcript = event.results[i][0].transcript;
-                if (event.results[i].isFinal) finalTranscript += transcript;
+                const confidence = Number(event.results[i][0].confidence || 0);
+                if (event.results[i].isFinal) {
+                    finalizedTranscript += `${transcript} `;
+                    bestConfidence = Math.max(bestConfidence, confidence);
+                }
                 else interimTranscript += transcript;
             }
 
-            messageInput.value = finalTranscript || interimTranscript;
+            currentInterim = `${finalizedTranscript}${interimTranscript}`.trim();
+            messageInput.value = currentInterim;
             messageInput.focus();
             messageInput.dispatchEvent(new Event('input'));
         };
@@ -479,13 +523,44 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.onend = () => {
             isRecording = false;
             voiceBtn.classList.remove('recording');
-            showNotification('Voice input stopped', 'info');
+
+            const transcript = finalizedTranscript.trim();
+            if (transcript) {
+                if (bestConfidence > 0 && bestConfidence < 0.55) {
+                    showNotification('Low speech confidence. Please review text before sending.', 'warning');
+                } else {
+                    showNotification('Voice input captured', 'success');
+                }
+            } else {
+                showNotification('No speech captured. Try again closer to mic.', 'warning');
+            }
+
+            finalizedTranscript = '';
+            bestConfidence = 0;
         };
 
         recognition.onerror = (event) => {
             isRecording = false;
             voiceBtn.classList.remove('recording');
-            showNotification(`Speech error: ${event.error}`, 'warning');
+            finalizedTranscript = '';
+            bestConfidence = 0;
+            const errorMap = {
+                'not-allowed': 'Microphone permission denied. Allow mic access in browser settings.',
+                'service-not-allowed': 'Speech service blocked by browser policy.',
+                'no-speech': 'No speech detected. Please speak clearly and try again.',
+                'audio-capture': 'No microphone detected. Check your audio device.',
+                'network': 'Network issue during recognition. Retry in a moment.',
+                'language-not-supported': `Selected language ${selectedSpeechLanguage} is not supported by this browser.`
+            };
+            if (event.error === 'language-not-supported') {
+                const fallbackLang = resolveRecognitionLanguage(selectedSpeechLanguage);
+                if (fallbackLang !== selectedSpeechLanguage) {
+                    recognition.lang = fallbackLang;
+                    showNotification(`Language fallback applied: ${selectedSpeechLanguage} -> ${fallbackLang}`, 'warning');
+                    return;
+                }
+            }
+            showNotification(errorMap[event.error] || `Speech error: ${event.error}`, 'warning');
         };
     }
 
@@ -494,15 +569,25 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification('Speech recognition is not supported in this browser', 'warning');
             return;
         }
+        const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+        if (!window.isSecureContext && !isLocalhost) {
+            showNotification('Voice input requires HTTPS (or localhost).', 'warning');
+            return;
+        }
         if (isRecording) {
             recognition.stop();
             return;
         }
+        finalizedTranscript = '';
+        bestConfidence = 0;
         recognition.lang = selectedSpeechLanguage;
-        recognition.start();
-        isRecording = true;
-        voiceBtn.classList.add('recording');
-        showNotification(`Listening in ${selectedSpeechLanguage}`, 'info');
+
+        try {
+            recognition.start();
+        } catch (error) {
+            // Some engines throw if start() is called too quickly after stop().
+            showNotification('Voice recognizer is busy. Please wait a second and retry.', 'warning');
+        }
     }
 
     function updateCompanyMode() {
@@ -533,6 +618,23 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification(`Speech language set to ${selectedSpeechLanguage}`, 'info');
     }
 
+    function updatePaymentMethod() {
+        selectedPaymentMethod = paymentMethod.value;
+        localStorage.setItem('paymentMethod', selectedPaymentMethod);
+        showNotification(`Payment method set to ${selectedPaymentMethod}`, 'info');
+    }
+
+    function resolveRecognitionLanguage(langCode) {
+        // Browser engines differ by supported locales; provide practical fallbacks.
+        const fallbackMap = {
+            'ps-AF': 'ur-PK',
+            'sd-PK': 'ur-PK',
+            'pa-PK': 'ur-PK'
+        };
+        if (!fallbackMap[langCode]) return langCode;
+        return fallbackMap[langCode];
+    }
+
     function speakIfEnabled(text) {
         if (!voiceToggle.checked) return;
         if (!window.speechSynthesis) {
@@ -544,6 +646,48 @@ document.addEventListener('DOMContentLoaded', () => {
         utterance.rate = 1;
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
+    }
+
+    async function createPaymentRequest(orderId, amountPkr) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/v1/payments/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    order_id: orderId,
+                    amount_pkr: amountPkr,
+                    payment_provider: selectedPaymentMethod
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                return `Payment API error (${response.status}): ${errorText}`;
+            }
+
+            const data = await response.json();
+            return [
+                `Payment request created (${String(data.provider).toUpperCase()})`,
+                '',
+                `- **Order**: ${orderId}`,
+                `- **Amount**: PKR ${Number(amountPkr).toFixed(2)}`,
+                `- **Reference**: ${data.reference_id}`,
+                `- **Status**: ${data.status}`,
+                data.checkout_url ? `- **Checkout URL**: ${data.checkout_url}` : '- **Checkout URL**: n/a',
+                '',
+                '**Instructions**',
+                data.instructions
+            ].join('\n');
+        } catch (error) {
+            return [
+                'Could not reach payment API.',
+                '',
+                `- Ensure API is running at ${API_BASE_URL}`,
+                '- Start API with: `python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000`',
+                '',
+                `Error: ${error && error.message ? error.message : String(error)}`
+            ].join('\n');
+        }
     }
 
     function exportChat(event) {
@@ -657,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => {
         if (!chatHistory.length) {
-            showNotification('Welcome. Select company mode and business use case to run a buyer-ready demo.', 'info');
+            showNotification('Welcome. Select business type to run a Pakistan-ready seller demo.', 'info');
         }
     }, 900);
 });

@@ -9,7 +9,7 @@
 
 ## Reporting a Vulnerability
 
-The CyberShield team takes security vulnerabilities seriously. We appreciate your efforts to responsibly disclose your findings.
+The AI Project Assistant team takes security vulnerabilities seriously. We appreciate your efforts to responsibly disclose your findings.
 
 ### How to Report
 
@@ -17,7 +17,7 @@ The CyberShield team takes security vulnerabilities seriously. We appreciate you
 
 Instead, please report them via email to:
 - **Email**: www.ferozkhan@outlook.com
-- **Subject Line**: "Security Vulnerability Report - CyberShield"
+- **Subject Line**: "Security Vulnerability Report - AI Project Assistant"
 
 ### What to Include
 
@@ -84,8 +84,8 @@ cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
 cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
 
 # ✅ Good: Validate and sanitize inputs
-from werkzeug.security import check_password_hash
-if check_password_hash(stored_hash, user_input):
+from src.core.security import verify_password
+if verify_password(user_input, stored_hash):
     # Proceed
 
 # ✅ Good: Use secure session management
@@ -121,7 +121,7 @@ SECRET_KEY = 'hardcoded-secret-key-123'
 - Password requirements: 8+ characters
 
 ### Data Storage
-- User passwords: Hashed with Werkzeug
+- User passwords: Hashed with PBKDF2-SHA256
 - Session data: Encrypted
 - File uploads: Validated and sanitized
 

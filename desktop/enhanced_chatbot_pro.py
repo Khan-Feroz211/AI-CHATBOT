@@ -5,13 +5,20 @@ from datetime import datetime
 import sqlite3
 import os
 from pathlib import Path
-import hashlib
 import base64
 import random
 import string
 import webbrowser
 import threading
 import time
+import secrets
+
+try:
+    from src.core.security import hash_password, verify_password, is_legacy_sha256_hash
+except ImportError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from src.core.security import hash_password, verify_password, is_legacy_sha256_hash
 
 # For PDF export
 try:
@@ -85,7 +92,7 @@ class UserAuthSystem:
     
     def hash_password(self, password):
         """Hash password with salt"""
-        return hashlib.sha256(password.encode()).hexdigest()
+        return hash_password(password)
     
     def register_user(self, username, password, email="", is_guest=False):
         """Register a new user"""
@@ -115,40 +122,45 @@ class UserAuthSystem:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        password_hash = self.hash_password(password)
-        
         try:
             cursor.execute('''
-                SELECT id, username, role, is_guest FROM users 
-                WHERE username = ? AND password_hash = ?
-            ''', (username, password_hash))
+                SELECT id, username, role, is_guest, password_hash FROM users
+                WHERE username = ?
+            ''', (username,))
+            user = cursor.fetchone()
         except sqlite3.OperationalError as e:
             if "no such column: is_guest" in str(e):
                 # Handle old database schema
                 cursor.execute('''
-                    SELECT id, username, role FROM users 
-                    WHERE username = ? AND password_hash = ?
-                ''', (username, password_hash))
-                user = cursor.fetchone()
-                if user:
+                    SELECT id, username, role, password_hash FROM users
+                    WHERE username = ?
+                ''', (username,))
+                legacy_user = cursor.fetchone()
+                if legacy_user:
                     # Add is_guest column with default value
                     try:
                         cursor.execute('ALTER TABLE users ADD COLUMN is_guest INTEGER DEFAULT 0')
-                        cursor.execute('UPDATE users SET is_guest = 0 WHERE id = ?', (user[0],))
+                        cursor.execute('UPDATE users SET is_guest = 0 WHERE id = ?', (legacy_user[0],))
                         conn.commit()
-                    except:
+                    except Exception:
                         pass  # Column might already exist
-                    user = (user[0], user[1], user[2], 0)  # Add is_guest=0
+                    user = (legacy_user[0], legacy_user[1], legacy_user[2], 0, legacy_user[3])
+                else:
+                    user = None
             else:
                 conn.close()
                 return False, f"❌ Database error: {str(e)}"
         
-        user = cursor.fetchone()
-        
         if user:
-            # Ensure user has all fields
-            if len(user) == 3:  # Old schema without is_guest
-                user = (user[0], user[1], user[2], 0)
+            stored_hash = user[4]
+            if not verify_password(password, stored_hash):
+                conn.close()
+                return False, "Invalid username or password!"
+
+            if is_legacy_sha256_hash(stored_hash):
+                cursor.execute('''
+                    UPDATE users SET password_hash = ? WHERE id = ?
+                ''', (self.hash_password(password), user[0]))
             
             # Update last login
             cursor.execute('''
@@ -166,7 +178,7 @@ class UserAuthSystem:
             return True, f"🎉 Welcome back, {username}!"
         
         conn.close()
-        return False, "❌ Invalid username or password!"
+        return False, "Invalid username or password!"
     
     def create_guest_user(self):
         """Create a temporary guest user"""
@@ -174,7 +186,7 @@ class UserAuthSystem:
         timestamp = datetime.now().strftime("%H%M%S")
         random_chars = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
         guest_username = f"guest_{timestamp}_{random_chars}"
-        guest_password = "guest123"
+        guest_password = secrets.token_urlsafe(16)
         
         success, message = self.register_user(
             guest_username, 
@@ -2933,3 +2945,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
