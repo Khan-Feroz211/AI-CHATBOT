@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Generate Favicon</title>
+</head>
+<body>
+    <canvas id="canvas" width="64" height="64"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Background - Pakistan green
+        ctx.fillStyle = '#01411C';
+        ctx.fillRect(0, 0, 64, 64);
+        
+        // Inner circle
+        ctx.fillStyle = '#0f6d3f';
+        ctx.beginPath();
+        ctx.arc(32, 32, 28, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Store building
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(32, 20);
+        ctx.lineTo(48, 28);
+        ctx.lineTo(48, 48);
+        ctx.lineTo(16, 48);
+        ctx.lineTo(16, 28);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Roof
+        ctx.fillStyle = '#198754';
+        ctx.beginPath();
+        ctx.moveTo(32, 18);
+        ctx.lineTo(50, 28);
+        ctx.lineTo(48, 28);
+        ctx.lineTo(32, 20);
+        ctx.lineTo(16, 28);
+        ctx.lineTo(14, 28);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Door
+        ctx.fillStyle = '#01411C';
+        ctx.fillRect(28, 36, 8, 12);
+        
+        // Windows
+        ctx.fillRect(20, 32, 6, 6);
+        ctx.fillRect(38, 32, 6, 6);
+        
+        // PKR symbol
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('₨', 32, 16);
+        
+        // Download
+        const link = document.createElement('a');
+        link.download = 'favicon.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    </script>
+</body>
+</html>
