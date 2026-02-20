@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background circle with Pakistan green -->
+  <circle cx="32" cy="32" r="32" fill="#01411C"/>
+  
+  <!-- Inner circle -->
+  <circle cx="32" cy="32" r="28" fill="#0f6d3f"/>
+  
+  <!-- Store/Shop icon -->
+  <path d="M16 28 L32 20 L48 28 L48 48 L16 48 Z" fill="#fff" opacity="0.9"/>
+  
+  <!-- Roof detail -->
+  <path d="M14 28 L32 18 L50 28 L48 28 L32 20 L16 28 Z" fill="#198754"/>
+  
+  <!-- Door -->
+  <rect x="28" y="36" width="8" height="12" fill="#01411C" rx="1"/>
+  
+  <!-- Windows -->
+  <rect x="20" y="32" width="6" height="6" fill="#01411C" rx="1"/>
+  <rect x="38" y="32" width="6" height="6" fill="#01411C" rx="1"/>
+  
+  <!-- PKR symbol -->
+  <text x="32" y="16" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#FFD700" text-anchor="middle">₨</text>
+</svg>
