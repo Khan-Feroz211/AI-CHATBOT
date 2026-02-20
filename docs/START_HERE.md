@@ -34,8 +34,8 @@ http://localhost:8000
 ```
 
 ### Step 4: Login
-- Username: **admin**
-- Password: **admin123**
+- Create your account on first run
+- Or use credentials from `.env` file
 
 **THAT'S IT!** 🎉
 
@@ -171,20 +171,19 @@ All endpoints documented in `app.py`:
 
 ### Environment Variables (.env)
 ```env
-FLASK_SECRET_KEY=smart-weather-secret-key-2024-production
-OPENWEATHER_API_KEY=7abebf46599844601faf1c220d94e4ed
+FLASK_SECRET_KEY=<generate-strong-random-key>
+OPENWEATHER_API_KEY=<your-api-key-here>
 HARDWARE_MODE=False
 DATABASE_PATH=database/weather.db
-DEBUG_MODE=True
+DEBUG_MODE=False
 ```
 
-### Default Credentials
-- Username: `admin`
-- Password: `admin123`
-- Email: `admin@weather.com`
-- City: `London`
+### Initial Setup
+- First user becomes admin automatically
+- Set credentials via environment variables
+- Configure in `.env` file
 
-**⚠️ Change in production!**
+**⚠️ Use strong passwords in production!**
 
 ---
 
@@ -225,8 +224,8 @@ python app.py
 
 ### API Not Working
 ```bash
-# Test API key
-curl "http://api.openweathermap.org/data/2.5/weather?q=London&appid=7abebf46599844601faf1c220d94e4ed&units=metric"
+# Test API key (replace with your key)
+curl "http://api.openweathermap.org/data/2.5/weather?q=London&appid=YOUR_API_KEY&units=metric"
 ```
 
 ---
@@ -234,7 +233,7 @@ curl "http://api.openweathermap.org/data/2.5/weather?q=London&appid=7abebf465998
 ## 🎯 Next Steps
 
 1. **Run the app** - `python app.py`
-2. **Login** - admin/admin123
+2. **Create account** - Register on first visit
 3. **Explore features** - Dashboard, Satellite, Alerts
 4. **Toggle theme** - Try dark/light modes
 5. **Create alerts** - Set temperature thresholds
@@ -250,7 +249,7 @@ curl "http://api.openweathermap.org/data/2.5/weather?q=London&appid=7abebf465998
 - **City**: Register new user with different city
 - **Alerts**: Alerts page → "New Alert" button
 - **Hardware**: Enable in `.env` then use API
-- **Admin**: Login as 'admin' for statistics
+- **Admin**: First registered user gets admin access
 
 ---
 
@@ -284,7 +283,7 @@ python app.py
 
 **Then open:** http://localhost:8000
 
-**Login:** admin / admin123
+**Login:** Create your account on first visit
 
 Enjoy your Smart Weather System! 🌤️🚀
 

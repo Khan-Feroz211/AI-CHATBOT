@@ -1,0 +1,48 @@
+flowchart TB
+    U[User]
+    FE[Web Frontend<br/>Chat + Voice + File]
+    API[FastAPI Backend]
+    AUTH[Auth + RBAC + Tenant Scope]
+    ORCH[LLM Orchestrator]
+    TOOLS[Tool Layer<br/>Inventory/Orders/Customers/Notifications]
+    RULES[Rules Engine<br/>Threshold + Scheduled Jobs]
+    NOTIFY[Notification Gateway<br/>WhatsApp/SMS/Email]
+    DB[(PostgreSQL)]
+    CACHE[(Redis)]
+    FILES[(Object Storage)]
+    AUDIT[(Audit Log Store)]
+    ANALYTICS[Analytics Service]
+    DASH[Dashboard API + UI Widgets]
+    OBS[Monitoring + Alerting]
+    BACKUP[Backup + Restore Pipeline]
+
+    U --> FE
+    FE --> API
+
+    API --> AUTH
+    API --> ORCH
+    API --> DB
+    API --> FILES
+    API --> AUDIT
+    API --> ANALYTICS
+
+    ORCH --> TOOLS
+    TOOLS --> DB
+    TOOLS --> NOTIFY
+    TOOLS --> FILES
+
+    RULES --> CACHE
+    RULES --> DB
+    RULES --> NOTIFY
+    RULES --> AUDIT
+    API --> RULES
+
+    ANALYTICS --> DB
+    ANALYTICS --> AUDIT
+    ANALYTICS --> DASH
+    FE --> DASH
+
+    API --> OBS
+    RULES --> OBS
+    NOTIFY --> OBS
+    DB --> BACKUP

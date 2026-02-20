@@ -1,0 +1,6 @@
+﻿torch==2.1.0
+transformers==4.35.0
+sentence-transformers==2.2.2
+scikit-learn==1.3.2
+numpy==1.24.3
+pandas==2.1.3
