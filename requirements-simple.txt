@@ -5,6 +5,7 @@ pydantic>=2.10.0,<3.0.0
 pydantic-settings>=2.6.0,<3.0.0
 python-dotenv==1.0.0
 numpy>=2.1.0,<3.0.0
+httpx>=0.27.0,<1.0.0
 
 # For embeddings (optional - comment out if issues)
 # sentence-transformers==2.2.2

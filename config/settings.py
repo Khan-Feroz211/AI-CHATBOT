@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     USE_ONNX: bool = True
     MAX_SEQUENCE_LENGTH: int = 256
     BATCH_SIZE: int = 8
+    DETECT_ACCELERATOR_DEVICE: bool = False
     
     # Device (will be set after import)
     DEVICE: str = "cpu"  # Default value
@@ -80,6 +81,18 @@ class Settings(BaseSettings):
     BANK_TRANSFER_BANK_NAME: str = ""
     BANK_TRANSFER_ACCOUNT_TITLE: str = ""
     BANK_TRANSFER_IBAN: str = ""
+
+    # WhatsApp (Meta Cloud API)
+    WHATSAPP_ENABLED: bool = False
+    WHATSAPP_SANDBOX_MODE: bool = True
+    WHATSAPP_API_VERSION: str = "v22.0"
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_VERIFY_TOKEN: str = ""
+    WHATSAPP_APP_SECRET: str = ""
+    WHATSAPP_TIMEOUT_SECONDS: int = 15
+    WHATSAPP_MAX_RETRIES: int = 2
+    WHATSAPP_RETRY_BACKOFF_SECONDS: float = 1.0
     
     model_config = ConfigDict(
         env_file=".env",
@@ -100,14 +113,16 @@ os.makedirs(settings.COLAB_MODELS_PATH, exist_ok=True)
 os.makedirs(settings.STORAGE_PATH, exist_ok=True)
 
 # Device configuration (optional)
-try:
-    import torch
-    if torch.cuda.is_available():
-        settings.DEVICE = "cuda"
-    elif hasattr(torch, 'backends') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        settings.DEVICE = "mps"
-    else:
+if settings.DETECT_ACCELERATOR_DEVICE:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            settings.DEVICE = "cuda"
+        elif hasattr(torch, "backends") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            settings.DEVICE = "mps"
+        else:
+            settings.DEVICE = "cpu"
+    except ImportError:
+        # Torch not installed, keep default "cpu"
         settings.DEVICE = "cpu"
-except ImportError:
-    # Torch not installed, keep default "cpu"
-    settings.DEVICE = "cpu"

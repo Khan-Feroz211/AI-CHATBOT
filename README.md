@@ -87,10 +87,46 @@ Configure providers in `.env` (see `.env.example`).
 Sandbox mode (default) lets you demo payment links locally without live merchant credentials.
 For live mode, set `PAYMENT_SANDBOX_MODE=false` and provide JazzCash/EasyPaisa merchant keys.
 
+## WhatsApp API (Meta Cloud - Sandbox Ready)
+
+Create outbound WhatsApp message payload:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/whatsapp/send \
+  -H "Content-Type: application/json" \
+  -d "{\"to_phone\":\"923001234567\",\"message\":\"Assalam o Alaikum! Aap ka order confirm ho gaya hai.\"}"
+```
+
+Webhook endpoints:
+- Verify endpoint: `GET /api/v1/whatsapp/webhook`
+- Event endpoint: `POST /api/v1/whatsapp/webhook`
+
+`POST /api/v1/whatsapp/send` sends real messages in live mode and includes retry logic.
+
+Set these env vars in `.env` for live mode:
+- `WHATSAPP_ENABLED=true`
+- `WHATSAPP_SANDBOX_MODE=false`
+- `WHATSAPP_ACCESS_TOKEN=...`
+- `WHATSAPP_PHONE_NUMBER_ID=...`
+- `WHATSAPP_VERIFY_TOKEN=...`
+- `WHATSAPP_APP_SECRET=...`
+- `WHATSAPP_TIMEOUT_SECONDS=15`
+- `WHATSAPP_MAX_RETRIES=2`
+- `WHATSAPP_RETRY_BACKOFF_SECONDS=1.0`
+
 ## Requirements
 
 - Python 3.8+
 - See `requirements-simple.txt` for API + local ML starter dependencies
+
+For stable local ML behavior on Windows, prefer Python 3.11 or 3.12.  
+Python 3.13 environments can hit native NumPy/SciPy crashes depending on wheel build.
+
+Client pricing proposal template (Pakistan, beginner-friendly):  
+`docs/CLIENT_PROPOSAL_TEMPLATE_PK_BEGINNER.md`
+
+Detailed pricing/cost model for partner discussion:  
+`docs/PRICING_COST_MODEL_PK.md`
 
 ## License
 
