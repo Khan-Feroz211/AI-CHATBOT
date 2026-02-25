@@ -1,5 +1,5 @@
-import tkinter as tk
-from tkinter import scrolledtext, messagebox, ttk, filedialog
+﻿import tkinter as tk
+from tkinter import scrolledtext, messagebox, ttk, filedialog, simpledialog
 import json
 from datetime import datetime
 import sqlite3
@@ -12,6 +12,7 @@ import webbrowser
 import threading
 import time
 import secrets
+import hashlib
 
 try:
     from src.core.security import hash_password, verify_password, is_legacy_sha256_hash
@@ -45,6 +46,14 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
+try:
+    import pyotp
+    import qrcode
+    from PIL import ImageTk
+    MFA_AVAILABLE = True
+except ImportError:
+    MFA_AVAILABLE = False
+
 
 class UserAuthSystem:
     """Handle user authentication and sessions"""
@@ -69,9 +78,22 @@ class UserAuthSystem:
                 created_date TEXT,
                 last_login TEXT,
                 role TEXT DEFAULT 'user',
-                is_guest INTEGER DEFAULT 0
+                is_guest INTEGER DEFAULT 0,
+                mfa_enabled INTEGER DEFAULT 0,
+                mfa_secret TEXT,
+                mfa_backup_codes TEXT
             )
         ''')
+
+        # Backward-compatible migration for existing databases.
+        cursor.execute("PRAGMA table_info(users)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "mfa_enabled" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN mfa_enabled INTEGER DEFAULT 0")
+        if "mfa_secret" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN mfa_secret TEXT")
+        if "mfa_backup_codes" not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN mfa_backup_codes TEXT")
         
         conn.commit()
         conn.close()
@@ -95,56 +117,166 @@ class UserAuthSystem:
             
             conn.commit()
             conn.close()
-            return True, "✅ User registered successfully!"
+            return True, "âœ… User registered successfully!"
         except sqlite3.IntegrityError:
             conn.close()
-            return False, "❌ Username already exists!"
+            return False, "âŒ Username already exists!"
         except Exception as e:
             conn.close()
-            return False, f"❌ Registration failed: {str(e)}"
+            return False, f"âŒ Registration failed: {str(e)}"
     
-    def login_user(self, username, password):
-        """Authenticate user"""
+    def _hash_recovery_code(self, code):
+        """Hash backup code before storing."""
+        return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+    def _generate_recovery_codes(self, count=8):
+        """Generate one-time recovery codes."""
+        return [secrets.token_hex(4).upper() for _ in range(count)]
+
+    def create_mfa_setup(self, user_id, username):
+        """Create MFA seed and provisioning URI."""
+        if not MFA_AVAILABLE:
+            return False, "MFA libraries are not installed.", None
+
+        secret = pyotp.random_base32()
+        uri = pyotp.TOTP(secret).provisioning_uri(name=username, issuer_name="AI Project Assistant")
+        recovery_codes = self._generate_recovery_codes()
+        return True, "MFA setup generated.", {
+            "user_id": user_id,
+            "secret": secret,
+            "provisioning_uri": uri,
+            "recovery_codes": recovery_codes
+        }
+
+    def _validate_mfa(self, mfa_secret, mfa_backup_codes, provided_code):
+        """Validate authenticator code or one-time backup code."""
+        if not provided_code:
+            return False, "Authenticator code is required.", mfa_backup_codes
+
+        code = str(provided_code).strip().replace(" ", "")
+        if mfa_secret and MFA_AVAILABLE and pyotp.TOTP(mfa_secret).verify(code, valid_window=1):
+            return True, "MFA verified.", mfa_backup_codes
+
+        try:
+            backup_hashes = json.loads(mfa_backup_codes) if mfa_backup_codes else []
+        except json.JSONDecodeError:
+            backup_hashes = []
+
+        entered_hash = self._hash_recovery_code(code.upper())
+        if entered_hash in backup_hashes:
+            backup_hashes.remove(entered_hash)
+            return True, "Backup code accepted.", json.dumps(backup_hashes)
+
+        return False, "Invalid authenticator or backup code.", mfa_backup_codes
+
+    def enable_mfa(self, user_id, secret, otp_code, recovery_codes):
+        """Enable MFA after verifying code."""
+        if not MFA_AVAILABLE:
+            return False, "MFA libraries are not installed."
+        if not pyotp.TOTP(secret).verify(str(otp_code).strip(), valid_window=1):
+            return False, "Invalid authenticator code."
+
+        hashed_codes = [self._hash_recovery_code(code) for code in recovery_codes]
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET mfa_enabled = 1, mfa_secret = ?, mfa_backup_codes = ? WHERE id = ?",
+            (secret, json.dumps(hashed_codes), user_id)
+        )
+        conn.commit()
+        conn.close()
+        return True, "MFA enabled successfully."
+
+    def disable_mfa(self, user_id, mfa_code):
+        """Disable MFA after OTP or backup code validation."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT mfa_enabled, mfa_secret, mfa_backup_codes FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            conn.close()
+            return False, "MFA is not enabled for this account."
+
+        ok, message, _ = self._validate_mfa(row[1], row[2], mfa_code)
+        if not ok:
+            conn.close()
+            return False, message
+
+        cursor.execute(
+            "UPDATE users SET mfa_enabled = 0, mfa_secret = NULL, mfa_backup_codes = NULL WHERE id = ?",
+            (user_id,)
+        )
+        conn.commit()
+        conn.close()
+        return True, "MFA disabled successfully."
+
+    def get_mfa_status(self, user_id):
+        """Read MFA enabled state."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT mfa_enabled FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return bool(row and row[0])
+
+    def login_user(self, username, password, mfa_code=None):
+        """Authenticate user with optional MFA challenge."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT id, username, role, is_guest, password_hash FROM users
+            SELECT id, username, role, is_guest, password_hash, mfa_enabled, mfa_secret, mfa_backup_codes
+            FROM users
             WHERE username = ?
         ''', (username,))
 
         user = cursor.fetchone()
-        
-        if user:
-            stored_hash = user[4]
-            if not verify_password(password, stored_hash):
-                conn.close()
-                return False, "âŒ Invalid username or password!"
-
-            # Auto-migrate legacy hashes to PBKDF2 on successful login.
-            if is_legacy_sha256_hash(stored_hash):
-                cursor.execute('''
-                    UPDATE users SET password_hash = ? WHERE id = ?
-                ''', (self.hash_password(password), user[0]))
-
-            # Update last login
-            cursor.execute('''
-                UPDATE users SET last_login = ? WHERE id = ?
-            ''', (datetime.now().isoformat(), user[0]))
-            conn.commit()
-            
-            self.current_user = {
-                'id': user[0],
-                'username': user[1],
-                'role': user[2],
-                'is_guest': bool(user[3])
-            }
+        if not user:
             conn.close()
-            return True, f"🎉 Welcome back, {username}!"
-        
+            return False, "Invalid username or password!"
+
+        stored_hash = user[4]
+        if not verify_password(password, stored_hash):
+            conn.close()
+            return False, "Invalid username or password!"
+
+        mfa_enabled = bool(user[5])
+        if mfa_enabled:
+            ok, mfa_message, updated_backup_codes = self._validate_mfa(user[6], user[7], mfa_code)
+            if not ok:
+                conn.close()
+                if not mfa_code:
+                    return False, "MFA_REQUIRED"
+                return False, mfa_message
+            if updated_backup_codes != user[7]:
+                cursor.execute(
+                    "UPDATE users SET mfa_backup_codes = ? WHERE id = ?",
+                    (updated_backup_codes, user[0])
+                )
+
+        # Auto-migrate legacy hashes to PBKDF2 on successful login.
+        if is_legacy_sha256_hash(stored_hash):
+            cursor.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (self.hash_password(password), user[0])
+            )
+
+        cursor.execute(
+            "UPDATE users SET last_login = ? WHERE id = ?",
+            (datetime.now().isoformat(), user[0])
+        )
+        conn.commit()
+
+        self.current_user = {
+            'id': user[0],
+            'username': user[1],
+            'role': user[2],
+            'is_guest': bool(user[3]),
+            'mfa_enabled': mfa_enabled
+        }
         conn.close()
-        return False, "❌ Invalid username or password!"
-    
+        return True, f"Welcome back, {username}!"
+
     def create_guest_user(self):
         """Create a temporary guest user"""
         # Generate random guest username
@@ -163,9 +295,9 @@ class UserAuthSystem:
             # Auto-login the guest
             login_success, login_message = self.login_user(guest_username, guest_password)
             if login_success:
-                return True, f"🎉 Guest session created: {guest_username}"
+                return True, f"ðŸŽ‰ Guest session created: {guest_username}"
         
-        return False, "❌ Failed to create guest session"
+        return False, "âŒ Failed to create guest session"
     
     def cleanup_old_guest_users(self):
         """Remove guest users older than 24 hours"""
@@ -191,11 +323,11 @@ class UserAuthSystem:
                 cursor.execute('DELETE FROM settings WHERE user_id = ?', (guest_id,))
                 cursor.execute('DELETE FROM users WHERE id = ?', (guest_id,))
                 
-                print(f"🧹 Cleaned up old guest: {guest_username}")
+                print(f"ðŸ§¹ Cleaned up old guest: {guest_username}")
             
             conn.commit()
         except Exception as e:
-            print(f"⚠️ Error cleaning up guest users: {e}")
+            print(f"âš ï¸ Error cleaning up guest users: {e}")
         finally:
             conn.close()
     
@@ -384,7 +516,7 @@ class SplashScreen:
         main_frame.pack(fill='both', expand=True)
         
         # Logo/Icon
-        self.logo_label = tk.Label(main_frame, text="🤖", 
+        self.logo_label = tk.Label(main_frame, text="ðŸ¤–", 
                                   font=("Arial", 64), 
                                   bg='#2c3e50', fg='#3498db')
         self.logo_label.pack(pady=(40, 10))
@@ -412,7 +544,7 @@ class SplashScreen:
         self.progress.start()
         
         # Version info
-        version_label = tk.Label(main_frame, text="© 2024 AI Assistant Pro", 
+        version_label = tk.Label(main_frame, text="Â© 2024 AI Assistant Pro", 
                                 font=("Segoe UI", 8), 
                                 bg='#2c3e50', fg='#7f8c8d')
         version_label.pack(side='bottom', pady=10)
@@ -454,20 +586,20 @@ class AIBackend:
             "hello": "Hello! I'm your AI assistant. How can I help you today?",
             "hi": "Hi there! Ready to boost your productivity?",
             "help": """
-🤖 **AI Assistant Help Commands:**
-• Add a task: "Add a task: [description]"
-• Show tasks: "Show my tasks", "What are my tasks?"
-• Complete task: "Complete task [number]"
-• Add note: "Add note: [title] - [content]"
-• Help: "help"
-• Progress: "What's my progress?", "Show analytics"
-• Export: "Export to PDF", "Export to markdown"
-• Clear: "Clear chat"
-• Settings: "AI settings"
+ðŸ¤– **AI Assistant Help Commands:**
+â€¢ Add a task: "Add a task: [description]"
+â€¢ Show tasks: "Show my tasks", "What are my tasks?"
+â€¢ Complete task: "Complete task [number]"
+â€¢ Add note: "Add note: [title] - [content]"
+â€¢ Help: "help"
+â€¢ Progress: "What's my progress?", "Show analytics"
+â€¢ Export: "Export to PDF", "Export to markdown"
+â€¢ Clear: "Clear chat"
+â€¢ Settings: "AI settings"
             """,
             "add a task": "To add a task, type: 'Add a task: [description]'",
-            "show tasks": "Go to the 📋 Tasks tab to see all your tasks.",
-            "progress": "Check your progress in the 📊 Analytics tab!",
+            "show tasks": "Go to the ðŸ“‹ Tasks tab to see all your tasks.",
+            "progress": "Check your progress in the ðŸ“Š Analytics tab!",
             "thanks": "You're welcome! Let me know if you need anything else.",
             "thank you": "You're welcome! Happy to help!",
             "bye": "Goodbye! Don't forget to save your work!"
@@ -555,34 +687,34 @@ class AIBackend:
         # Task management
         if "task" in user_input_lower:
             if "add" in user_input_lower or "create" in user_input_lower:
-                return "To add a task, you can:\n1. Go to 📋 Tasks tab and click '➕ Add Task'\n2. Type 'Add a task: [description]' in chat\n3. Use the quick action '📋 Add Task' button"
+                return "To add a task, you can:\n1. Go to ðŸ“‹ Tasks tab and click 'âž• Add Task'\n2. Type 'Add a task: [description]' in chat\n3. Use the quick action 'ðŸ“‹ Add Task' button"
             elif "complete" in user_input_lower or "finish" in user_input_lower:
-                return "To complete a task:\n1. Go to 📋 Tasks tab\n2. Select a task\n3. Click '✅ Complete' button\n4. Or type 'Complete task [number]'"
+                return "To complete a task:\n1. Go to ðŸ“‹ Tasks tab\n2. Select a task\n3. Click 'âœ… Complete' button\n4. Or type 'Complete task [number]'"
             elif "show" in user_input_lower or "list" in user_input_lower:
-                return "You can view all your tasks in the 📋 Tasks tab. Use filters to see active or completed tasks!"
+                return "You can view all your tasks in the ðŸ“‹ Tasks tab. Use filters to see active or completed tasks!"
         
         # Note management
         elif "note" in user_input_lower:
             if "add" in user_input_lower or "create" in user_input_lower:
-                return "To add a note:\n1. Go to 📝 Notes tab and click '➕ Add Note'\n2. Type 'Add note: [title] - [content]' in chat"
+                return "To add a note:\n1. Go to ðŸ“ Notes tab and click 'âž• Add Note'\n2. Type 'Add note: [title] - [content]' in chat"
             elif "show" in user_input_lower or "view" in user_input_lower:
-                return "All your notes are available in the 📝 Notes tab. You can search and filter them!"
+                return "All your notes are available in the ðŸ“ Notes tab. You can search and filter them!"
         
         # File management
         elif "file" in user_input_lower or "upload" in user_input_lower:
-            return "You can upload files in the 📎 Files tab. Supported formats: PDF, images, documents, and more!"
+            return "You can upload files in the ðŸ“Ž Files tab. Supported formats: PDF, images, documents, and more!"
         
         # Analytics
         elif "progress" in user_input_lower or "analytics" in user_input_lower:
-            return "Check your productivity stats in the 📊 Analytics tab. You'll see completion rates, priority distribution, and more!"
+            return "Check your productivity stats in the ðŸ“Š Analytics tab. You'll see completion rates, priority distribution, and more!"
         
         # Export
         elif "export" in user_input_lower or "save" in user_input_lower:
-            return "You can export your data:\n1. File → 📤 Export to PDF\n2. File → 📄 Export to Markdown\n3. Export from 📊 Analytics tab"
+            return "You can export your data:\n1. File â†’ ðŸ“¤ Export to PDF\n2. File â†’ ðŸ“„ Export to Markdown\n3. Export from ðŸ“Š Analytics tab"
         
         # Settings
         elif "setting" in user_input_lower or "config" in user_input_lower:
-            return "Configure AI settings by:\n1. Clicking '⚙️ AI Settings' in header\n2. File → 🤖 AI Settings\n3. Edit → 🤖 AI Settings"
+            return "Configure AI settings by:\n1. Clicking 'âš™ï¸ AI Settings' in header\n2. File â†’ ðŸ¤– AI Settings\n3. Edit â†’ ðŸ¤– AI Settings"
         
         # Default intelligent response
         responses = [
@@ -660,10 +792,10 @@ class FileManager:
             conn.commit()
             conn.close()
             
-            return True, file_id, f"✅ File uploaded: {original_name}"
+            return True, file_id, f"âœ… File uploaded: {original_name}"
             
         except Exception as e:
-            return False, None, f"❌ Upload failed: {str(e)}"
+            return False, None, f"âŒ Upload failed: {str(e)}"
     
     def get_user_files(self, user_id):
         """Get all files for a user"""
@@ -703,13 +835,13 @@ class FileManager:
                 conn.commit()
                 conn.close()
                 
-                return True, "✅ File deleted"
+                return True, "âœ… File deleted"
             
             conn.close()
-            return False, "❌ File not found"
+            return False, "âŒ File not found"
             
         except Exception as e:
-            return False, f"❌ Delete failed: {str(e)}"
+            return False, f"âŒ Delete failed: {str(e)}"
 
 
 class ExportManager:
@@ -754,13 +886,13 @@ class ExportManager:
             
             # Tasks section
             if self.tasks:
-                elements.append(Paragraph("<b>📋 TASKS</b>", styles['Heading2']))
+                elements.append(Paragraph("<b>ðŸ“‹ TASKS</b>", styles['Heading2']))
                 elements.append(Spacer(1, 10))
                 
                 # Create tasks table
                 task_data = [['Status', 'Description', 'Priority', 'Category', 'Date']]
                 for task in self.tasks:
-                    status = "✅" if task['completed'] else "⚡"
+                    status = "âœ…" if task['completed'] else "âš¡"
                     priority = task.get('priority', 'medium').capitalize()
                     category = task.get('category', 'general').capitalize()
                     date_str = task.get('added', '')[:16]
@@ -789,7 +921,7 @@ class ExportManager:
             
             # Notes section
             if self.notes:
-                elements.append(Paragraph("<b>📝 NOTES</b>", styles['Heading2']))
+                elements.append(Paragraph("<b>ðŸ“ NOTES</b>", styles['Heading2']))
                 elements.append(Spacer(1, 10))
                 
                 for note in self.notes:
@@ -808,7 +940,7 @@ class ExportManager:
             
             # Statistics section
             elements.append(PageBreak())
-            elements.append(Paragraph("<b>📊 STATISTICS</b>", styles['Heading2']))
+            elements.append(Paragraph("<b>ðŸ“Š STATISTICS</b>", styles['Heading2']))
             elements.append(Spacer(1, 10))
             
             # Calculate stats
@@ -838,10 +970,10 @@ class ExportManager:
             
             # Build PDF
             doc.build(elements)
-            return True, f"✅ PDF exported successfully to:\n{filename}"
+            return True, f"âœ… PDF exported successfully to:\n{filename}"
             
         except Exception as e:
-            return False, f"❌ PDF export failed: {str(e)}"
+            return False, f"âŒ PDF export failed: {str(e)}"
     
     def export_to_markdown(self, filename):
         """Export data to Markdown"""
@@ -853,22 +985,22 @@ class ExportManager:
                 
                 # Tasks section
                 if self.tasks:
-                    f.write("## 📋 Tasks\n\n")
+                    f.write("## ðŸ“‹ Tasks\n\n")
                     
                     # Group by completion status
                     completed_tasks = [t for t in self.tasks if t['completed']]
                     active_tasks = [t for t in self.tasks if not t['completed']]
                     
                     if active_tasks:
-                        f.write("### ⚡ Active Tasks\n")
+                        f.write("### âš¡ Active Tasks\n")
                         for task in active_tasks:
-                            priority_emoji = "🔴" if task.get('priority') == 'high' else "🟡" if task.get('priority') == 'medium' else "🟢"
+                            priority_emoji = "ðŸ”´" if task.get('priority') == 'high' else "ðŸŸ¡" if task.get('priority') == 'medium' else "ðŸŸ¢"
                             f.write(f"- {priority_emoji} **{task['text']}**\n")
                             f.write(f"  *Category: {task.get('category', 'general')}*\n")
                         f.write("\n")
                     
                     if completed_tasks:
-                        f.write("### ✅ Completed Tasks\n")
+                        f.write("### âœ… Completed Tasks\n")
                         for task in completed_tasks:
                             f.write(f"- ~~{task['text']}~~\n")
                             f.write(f"  *Completed: {task.get('completed_date', '')[:16]}*\n")
@@ -876,7 +1008,7 @@ class ExportManager:
                 
                 # Notes section
                 if self.notes:
-                    f.write("## 📝 Notes\n\n")
+                    f.write("## ðŸ“ Notes\n\n")
                     for note in self.notes:
                         f.write(f"### {note['title']}\n")
                         
@@ -889,7 +1021,7 @@ class ExportManager:
                         f.write("---\n\n")
                 
                 # Statistics
-                f.write("## 📊 Statistics\n\n")
+                f.write("## ðŸ“Š Statistics\n\n")
                 total_tasks = len(self.tasks)
                 completed_tasks = sum(1 for t in self.tasks if t['completed'])
                 completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
@@ -903,12 +1035,12 @@ class ExportManager:
                 f.write("\n### Progress Visualization\n\n")
                 progress_width = 20
                 filled = int((completed_tasks / total_tasks) * progress_width) if total_tasks > 0 else 0
-                f.write(f"`{'█' * filled}{'░' * (progress_width - filled)}` {completion_rate:.1f}%\n")
+                f.write(f"`{'â–ˆ' * filled}{'â–‘' * (progress_width - filled)}` {completion_rate:.1f}%\n")
             
-            return True, f"✅ Markdown exported successfully to:\n{filename}"
+            return True, f"âœ… Markdown exported successfully to:\n{filename}"
             
         except Exception as e:
-            return False, f"❌ Markdown export failed: {str(e)}"
+            return False, f"âŒ Markdown export failed: {str(e)}"
 
 
 class EnhancedChatbotPro:
@@ -959,26 +1091,31 @@ class EnhancedChatbotPro:
         try:
             # Setup database
             self.setup_database()
-            self.splash.update_status("Setting up database...")
+            self._update_splash_status_safe("Setting up database...")
             time.sleep(0.5)
             
             # Initialize authentication
             self.auth = UserAuthSystem(self.db_path)
-            self.splash.update_status("Setting up authentication...")
+            self._update_splash_status_safe("Setting up authentication...")
             time.sleep(0.5)
             
             # Clean up old guest users on startup
             self.auth.cleanup_old_guest_users()
-            self.splash.update_status("Cleaning up old sessions...")
+            self._update_splash_status_safe("Cleaning up old sessions...")
             time.sleep(0.5)
             
             # We'll handle login in main thread
             self.initialized = True
             
         except Exception as e:
-            print(f"❌ Initialization error: {e}")
+            print(f"âŒ Initialization error: {e}")
             self.initialized = False
             self.error = str(e)
+
+    def _update_splash_status_safe(self, text):
+        """Update splash text from any thread using Tk's main loop."""
+        if hasattr(self, "root") and self.root and self.root.winfo_exists():
+            self.root.after(0, lambda: self.splash.update_status(text))
     
     def check_initialization(self):
         """Check if initialization is complete"""
@@ -988,7 +1125,7 @@ class EnhancedChatbotPro:
                 self.show_login()
             else:
                 self.splash.destroy()
-                messagebox.showerror("❌ Initialization Failed", 
+                messagebox.showerror("âŒ Initialization Failed", 
                                    f"Failed to initialize app:\n{getattr(self, 'error', 'Unknown error')}")
                 self.root.quit()
         else:
@@ -1010,7 +1147,10 @@ class EnhancedChatbotPro:
                 created_date TEXT,
                 last_login TEXT,
                 role TEXT DEFAULT 'user',
-                is_guest INTEGER DEFAULT 0
+                is_guest INTEGER DEFAULT 0,
+                mfa_enabled INTEGER DEFAULT 0,
+                mfa_secret TEXT,
+                mfa_backup_codes TEXT
             )
         ''')
         
@@ -1115,7 +1255,7 @@ class EnhancedChatbotPro:
         title_frame.pack(pady=(0, 20))
         
         # Icon with animation
-        self.login_icon = ttk.Label(title_frame, text="🤖", font=("Segoe UI", 48))
+        self.login_icon = ttk.Label(title_frame, text="ðŸ¤–", font=("Segoe UI", 48))
         self.login_icon.pack()
         
         # App name
@@ -1125,17 +1265,17 @@ class EnhancedChatbotPro:
                  style='Subtitle.TLabel').pack()
         
         # Feature highlights
-        features_frame = ttk.LabelFrame(content_frame, text="✨ Premium Features", 
+        features_frame = ttk.LabelFrame(content_frame, text="âœ¨ Premium Features", 
                                        style='Card.TFrame', padding=15)
         features_frame.pack(fill='x', pady=(0, 20))
         
         features = [
-            "✅ AI-Powered Task Management",
-            "✅ Smart Notes with Tags",
-            "✅ File Uploads & Attachments",
-            "✅ Guest Mode Available",
-            "✅ PDF & Markdown Export",
-            "✅ Advanced Analytics Dashboard"
+            "âœ… AI-Powered Task Management",
+            "âœ… Smart Notes with Tags",
+            "âœ… File Uploads & Attachments",
+            "âœ… Guest Mode Available",
+            "âœ… PDF & Markdown Export",
+            "âœ… Advanced Analytics Dashboard"
         ]
         
         for feature in features:
@@ -1147,7 +1287,7 @@ class EnhancedChatbotPro:
         options_frame.pack(fill='both', expand=True, pady=20)
         
         # Guest Access Button
-        guest_frame = ttk.LabelFrame(options_frame, text="🚀 Quick Start", 
+        guest_frame = ttk.LabelFrame(options_frame, text="ðŸš€ Quick Start", 
                                     style='Card.TFrame', padding=20)
         guest_frame.pack(fill='both', pady=(0, 15))
         
@@ -1159,35 +1299,35 @@ class EnhancedChatbotPro:
             if success:
                 self.login_window.destroy()
                 self.complete_initialization()
-                messagebox.showinfo("🎉 Guest Session Started", 
+                messagebox.showinfo("ðŸŽ‰ Guest Session Started", 
                                   f"{message}\n\n"
-                                  "✨ **Full Access Granted:**\n"
-                                  "• All premium features enabled\n"
-                                  "• Local data storage\n"
-                                  "• AI backend configuration\n"
-                                  "• Export to PDF/Markdown\n\n"
-                                  "💡 **Tip:** Upgrade anytime for permanent storage!")
+                                  "âœ¨ **Full Access Granted:**\n"
+                                  "â€¢ All premium features enabled\n"
+                                  "â€¢ Local data storage\n"
+                                  "â€¢ AI backend configuration\n"
+                                  "â€¢ Export to PDF/Markdown\n\n"
+                                  "ðŸ’¡ **Tip:** Upgrade anytime for permanent storage!")
             else:
-                messagebox.showerror("❌ Guest Failed", message)
+                messagebox.showerror("âŒ Guest Failed", message)
         
-        self.guest_btn = ttk.Button(guest_frame, text="🎮 Start as Guest", 
+        self.guest_btn = ttk.Button(guest_frame, text="ðŸŽ® Start as Guest", 
                                    style='Primary.TButton',
                                    command=start_guest)
         self.guest_btn.pack(pady=10, fill='x')
         
-        ttk.Label(guest_frame, text="No registration needed • Full features • Try now", 
+        ttk.Label(guest_frame, text="No registration needed â€¢ Full features â€¢ Try now", 
                  font=("Segoe UI", 8), 
                  foreground=self.colors['text_light']).pack()
         
         # Or Separator
-        separator = ttk.Label(options_frame, text="───── or ─────", 
+        separator = ttk.Label(options_frame, text="â”€â”€â”€â”€â”€ or â”€â”€â”€â”€â”€", 
                              font=("Segoe UI", 10), 
                              foreground=self.colors['text_light'],
                              background=self.colors['background'])
         separator.pack(pady=10)
         
         # Login/Register Section
-        auth_frame = ttk.LabelFrame(options_frame, text="🔐 Registered Users", 
+        auth_frame = ttk.LabelFrame(options_frame, text="ðŸ” Registered Users", 
                                    style='Card.TFrame', padding=15)
         auth_frame.pack(fill='both', pady=(0, 10))
         
@@ -1197,7 +1337,7 @@ class EnhancedChatbotPro:
         
         # Login Tab
         login_tab = ttk.Frame(auth_notebook, padding=10)
-        auth_notebook.add(login_tab, text='🔑 Login')
+        auth_notebook.add(login_tab, text='ðŸ”‘ Login')
         
         login_content = ttk.Frame(login_tab)
         login_content.pack(fill='both', expand=True)
@@ -1217,17 +1357,33 @@ class EnhancedChatbotPro:
             password = self.login_pass_entry.get()
             
             if not username or not password:
-                messagebox.showwarning("⚠️ Input Required", 
+                messagebox.showwarning("âš ï¸ Input Required", 
                                      "Please enter username and password!")
                 return
             
             success, message = self.auth.login_user(username, password)
+            if not success and message == "MFA_REQUIRED":
+                mfa_prompt = (
+                    "Enter your 6-digit authenticator code.\n"
+                    "You can also enter a backup recovery code."
+                )
+                mfa_code = simpledialog.askstring(
+                    "Two-Factor Authentication",
+                    mfa_prompt,
+                    parent=self.login_window
+                )
+                if not mfa_code:
+                    messagebox.showwarning("MFA Required", "Login cancelled: MFA code was not provided.")
+                    return
+                success, message = self.auth.login_user(username, password, mfa_code=mfa_code)
+
             if success:
                 self.login_window.destroy()
                 self.complete_initialization()
-                messagebox.showinfo("🎉 Welcome Back", f"Welcome back, {username}!")
+                mfa_note = " (2FA enabled)" if self.auth.current_user.get('mfa_enabled') else ""
+                messagebox.showinfo("ðŸŽ‰ Welcome Back", f"Welcome back, {username}{mfa_note}!")
             else:
-                messagebox.showerror("❌ Login Failed", message)
+                messagebox.showerror("âŒ Login Failed", message)
         
         self.login_btn = ttk.Button(login_content, text="Login", 
                                    style='Success.TButton',
@@ -1236,7 +1392,7 @@ class EnhancedChatbotPro:
         
         # Register Tab
         register_tab = ttk.Frame(auth_notebook, padding=10)
-        auth_notebook.add(register_tab, text='📝 Register')
+        auth_notebook.add(register_tab, text='ðŸ“ Register')
         
         register_content = ttk.Frame(register_tab)
         register_content.pack(fill='both', expand=True)
@@ -1268,23 +1424,23 @@ class EnhancedChatbotPro:
             email = self.reg_email_entry.get().strip()
             
             if not username or not password:
-                messagebox.showwarning("⚠️ Input Required", 
+                messagebox.showwarning("âš ï¸ Input Required", 
                                      "Please enter username and password!")
                 return
             
             if len(password) < 6:
-                messagebox.showwarning("⚠️ Weak Password", 
+                messagebox.showwarning("âš ï¸ Weak Password", 
                                      "Password must be at least 6 characters!")
                 return
             
             if password != confirm:
-                messagebox.showwarning("⚠️ Password Mismatch", 
+                messagebox.showwarning("âš ï¸ Password Mismatch", 
                                      "Passwords don't match!")
                 return
             
             success, message = self.auth.register_user(username, password, email)
             if success:
-                messagebox.showinfo("✅ Success", 
+                messagebox.showinfo("âœ… Success", 
                                   message + "\n\nPlease login now.")
                 # Switch to login tab
                 auth_notebook.select(0)
@@ -1292,7 +1448,7 @@ class EnhancedChatbotPro:
                 self.login_user_entry.insert(0, username)
                 self.login_pass_entry.delete(0, tk.END)
             else:
-                messagebox.showerror("❌ Registration Failed", message)
+                messagebox.showerror("âŒ Registration Failed", message)
         
         self.register_btn = ttk.Button(register_content, text="Create Account", 
                                       style='Primary.TButton',
@@ -1304,8 +1460,8 @@ class EnhancedChatbotPro:
         info_frame.pack(fill='x', pady=(10, 0))
         
         info_label = ttk.Label(info_frame, 
-            text="💡 Guest users get full access to all premium features!\n"
-                 "👤 Registered users get permanent data storage and backup.",
+            text="ðŸ’¡ Guest users get full access to all premium features!\n"
+                 "ðŸ‘¤ Registered users get permanent data storage and backup.",
             font=("Segoe UI", 9), 
             foreground=self.colors['text_light'],
             justify='center')
@@ -1326,7 +1482,7 @@ class EnhancedChatbotPro:
     
     def animate_login_icon(self):
         """Animate the login icon"""
-        icons = ['🤖', '🚀', '🎯', '💡', '✨']
+        icons = ['ðŸ¤–', 'ðŸš€', 'ðŸŽ¯', 'ðŸ’¡', 'âœ¨']
         current_icon = 0
         
         def change_icon():
@@ -1363,7 +1519,7 @@ class EnhancedChatbotPro:
             self.auto_save()
             
         except Exception as e:
-            messagebox.showerror("❌ Initialization Error", 
+            messagebox.showerror("âŒ Initialization Error", 
                                f"Failed to initialize app:\n{str(e)}")
             self.root.quit()
     
@@ -1431,7 +1587,7 @@ class EnhancedChatbotPro:
                 self.ai_backend.api_key = result[0]
                 
         except sqlite3.OperationalError as e:
-            print(f"⚠️ Database error during load: {e}")
+            print(f"âš ï¸ Database error during load: {e}")
             # Tables might not exist yet, will be created as needed
         finally:
             conn.close()
@@ -1457,7 +1613,7 @@ class EnhancedChatbotPro:
         username = self.auth.current_user['username']
         is_guest = self.auth.current_user.get('is_guest', False)
         
-        user_icon = "👥" if is_guest else "👤"
+        user_icon = "ðŸ‘¥" if is_guest else "ðŸ‘¤"
         user_text = f"{user_icon} {username}"
         if is_guest:
             user_text += " (Guest)"
@@ -1468,7 +1624,7 @@ class EnhancedChatbotPro:
         user_label.pack(side='left')
         
         # Status indicator
-        status_text = "🟢 Online" if not is_guest else "🟡 Guest Mode"
+        status_text = "ðŸŸ¢ Online" if not is_guest else "ðŸŸ¡ Guest Mode"
         status_label = ttk.Label(header_frame, text=status_text,
                                 font=("Segoe UI", 9),
                                 foreground=self.colors['text_light'])
@@ -1479,19 +1635,25 @@ class EnhancedChatbotPro:
         btn_frame.pack(side='right')
         
         if is_guest:
-            upgrade_btn = ttk.Button(btn_frame, text="⭐ Upgrade", 
+            upgrade_btn = ttk.Button(btn_frame, text="â­ Upgrade", 
                                     style='Success.TButton',
                                     command=self.upgrade_guest,
                                     width=12)
             upgrade_btn.pack(side='left', padx=3)
         
-        ai_btn = ttk.Button(btn_frame, text="⚙️ AI Settings", 
+        ai_btn = ttk.Button(btn_frame, text="âš™ï¸ AI Settings", 
                            style='Secondary.TButton',
                            command=self.show_ai_settings,
                            width=12)
         ai_btn.pack(side='left', padx=3)
+
+        security_btn = ttk.Button(btn_frame, text="ðŸ” Security",
+                                  style='Secondary.TButton',
+                                  command=self.show_security_settings,
+                                  width=12)
+        security_btn.pack(side='left', padx=3)
         
-        logout_btn = ttk.Button(btn_frame, text="🚪 Logout", 
+        logout_btn = ttk.Button(btn_frame, text="ðŸšª Logout", 
                                style='Secondary.TButton',
                                command=self.logout,
                                width=10)
@@ -1526,61 +1688,62 @@ class EnhancedChatbotPro:
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0, bg=self.colors['surface'], 
                            fg=self.colors['text'], font=("Segoe UI", 9))
-        menubar.add_cascade(label="📁 File", menu=file_menu)
-        file_menu.add_command(label="📤 Export to PDF", command=self.export_to_pdf)
-        file_menu.add_command(label="📄 Export to Markdown", command=self.export_to_markdown)
+        menubar.add_cascade(label="ðŸ“ File", menu=file_menu)
+        file_menu.add_command(label="ðŸ“¤ Export to PDF", command=self.export_to_pdf)
+        file_menu.add_command(label="ðŸ“„ Export to Markdown", command=self.export_to_markdown)
         file_menu.add_separator()
-        file_menu.add_command(label="📥 Import Data", command=self.import_data)
+        file_menu.add_command(label="ðŸ“¥ Import Data", command=self.import_data)
         file_menu.add_separator()
         
         # Add upgrade option for guests
         if self.auth.current_user.get('is_guest', False):
-            file_menu.add_command(label="⭐ Create Permanent Account", 
+            file_menu.add_command(label="â­ Create Permanent Account", 
                                  command=self.upgrade_guest)
             file_menu.add_separator()
         
-        file_menu.add_command(label="🚪 Logout", command=self.logout)
-        file_menu.add_command(label="❌ Exit", command=self.root.quit)
+        file_menu.add_command(label="ðŸšª Logout", command=self.logout)
+        file_menu.add_command(label="âŒ Exit", command=self.root.quit)
         
         # Edit menu
         edit_menu = tk.Menu(menubar, tearoff=0, bg=self.colors['surface'], 
                            fg=self.colors['text'], font=("Segoe UI", 9))
-        menubar.add_cascade(label="✏️ Edit", menu=edit_menu)
-        edit_menu.add_command(label="🗑️ Clear Chat", command=self.clear_chat)
-        edit_menu.add_command(label="🤖 AI Settings", command=self.show_ai_settings)
+        menubar.add_cascade(label="âœï¸ Edit", menu=edit_menu)
+        edit_menu.add_command(label="ðŸ—‘ï¸ Clear Chat", command=self.clear_chat)
+        edit_menu.add_command(label="ðŸ¤– AI Settings", command=self.show_ai_settings)
+        edit_menu.add_command(label="ðŸ” Security (2FA)", command=self.show_security_settings)
         
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0, bg=self.colors['surface'], 
                            fg=self.colors['text'], font=("Segoe UI", 9))
-        menubar.add_cascade(label="👁️ View", menu=view_menu)
-        view_menu.add_command(label="💬 Chat", command=lambda: self.notebook.select(0))
-        view_menu.add_command(label="📋 Tasks", command=lambda: self.notebook.select(1))
-        view_menu.add_command(label="📝 Notes", command=lambda: self.notebook.select(2))
-        view_menu.add_command(label="📎 Files", command=lambda: self.notebook.select(3))
-        view_menu.add_command(label="📊 Analytics", command=lambda: self.notebook.select(4))
+        menubar.add_cascade(label="ðŸ‘ï¸ View", menu=view_menu)
+        view_menu.add_command(label="ðŸ’¬ Chat", command=lambda: self.notebook.select(0))
+        view_menu.add_command(label="ðŸ“‹ Tasks", command=lambda: self.notebook.select(1))
+        view_menu.add_command(label="ðŸ“ Notes", command=lambda: self.notebook.select(2))
+        view_menu.add_command(label="ðŸ“Ž Files", command=lambda: self.notebook.select(3))
+        view_menu.add_command(label="ðŸ“Š Analytics", command=lambda: self.notebook.select(4))
         
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0, bg=self.colors['surface'], 
                             fg=self.colors['text'], font=("Segoe UI", 9))
-        menubar.add_cascade(label="🛠️ Tools", menu=tools_menu)
-        tools_menu.add_command(label="📊 Analytics Dashboard", 
+        menubar.add_cascade(label="ðŸ› ï¸ Tools", menu=tools_menu)
+        tools_menu.add_command(label="ðŸ“Š Analytics Dashboard", 
                               command=lambda: self.notebook.select(4))
-        tools_menu.add_command(label="📎 File Manager", 
+        tools_menu.add_command(label="ðŸ“Ž File Manager", 
                               command=lambda: self.notebook.select(3))
         tools_menu.add_separator()
-        tools_menu.add_command(label="🧹 Cleanup Database", command=self.cleanup_database)
-        tools_menu.add_command(label="🔄 Refresh Data", command=self.refresh_all_data)
+        tools_menu.add_command(label="ðŸ§¹ Cleanup Database", command=self.cleanup_database)
+        tools_menu.add_command(label="ðŸ”„ Refresh Data", command=self.refresh_all_data)
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0, bg=self.colors['surface'], 
                            fg=self.colors['text'], font=("Segoe UI", 9))
-        menubar.add_cascade(label="❓ Help", menu=help_menu)
-        help_menu.add_command(label="📖 User Guide", command=self.show_user_guide)
-        help_menu.add_command(label="👥 Guest Information", command=self.show_guest_info)
+        menubar.add_cascade(label="â“ Help", menu=help_menu)
+        help_menu.add_command(label="ðŸ“– User Guide", command=self.show_user_guide)
+        help_menu.add_command(label="ðŸ‘¥ Guest Information", command=self.show_guest_info)
         help_menu.add_separator()
-        help_menu.add_command(label="ℹ️ About", command=self.show_about)
-        help_menu.add_command(label="🌐 Visit GitHub", command=self.open_github)
-        help_menu.add_command(label="📧 Report Issue", command=self.report_issue)
+        help_menu.add_command(label="â„¹ï¸ About", command=self.show_about)
+        help_menu.add_command(label="ðŸŒ Visit GitHub", command=self.open_github)
+        help_menu.add_command(label="ðŸ“§ Report Issue", command=self.report_issue)
     
     def setup_status_bar(self):
         """Add modern status bar at bottom"""
@@ -1588,23 +1751,23 @@ class EnhancedChatbotPro:
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
         
         # Status labels
-        self.task_status = ttk.Label(self.status_bar, text="📋 Tasks: 0/0", 
+        self.task_status = ttk.Label(self.status_bar, text="ðŸ“‹ Tasks: 0/0", 
                                     font=("Segoe UI", 9))
         self.task_status.pack(side='left', padx=10)
         
-        self.note_status = ttk.Label(self.status_bar, text="📝 Notes: 0", 
+        self.note_status = ttk.Label(self.status_bar, text="ðŸ“ Notes: 0", 
                                     font=("Segoe UI", 9))
         self.note_status.pack(side='left', padx=10)
         
-        self.ai_status = ttk.Label(self.status_bar, text="🤖 AI: Local", 
+        self.ai_status = ttk.Label(self.status_bar, text="ðŸ¤– AI: Local", 
                                   font=("Segoe UI", 9))
         self.ai_status.pack(side='left', padx=10)
         
-        self.user_status = ttk.Label(self.status_bar, text="👤 User: Guest", 
+        self.user_status = ttk.Label(self.status_bar, text="ðŸ‘¤ User: Guest", 
                                     font=("Segoe UI", 9))
         self.user_status.pack(side='left', padx=10)
         
-        self.time_status = ttk.Label(self.status_bar, text="🕐 00:00:00", 
+        self.time_status = ttk.Label(self.status_bar, text="ðŸ• 00:00:00", 
                                     font=("Segoe UI", 9))
         self.time_status.pack(side='right', padx=10)
         
@@ -1621,20 +1784,20 @@ class EnhancedChatbotPro:
             total_notes = len(self.notes)
             
             # Update labels
-            self.task_status.config(text=f"📋 Tasks: {completed_tasks}/{total_tasks}")
-            self.note_status.config(text=f"📝 Notes: {total_notes}")
+            self.task_status.config(text=f"ðŸ“‹ Tasks: {completed_tasks}/{total_tasks}")
+            self.note_status.config(text=f"ðŸ“ Notes: {total_notes}")
             
             ai_provider = self.ai_backend.provider if hasattr(self, 'ai_backend') else 'Local'
-            self.ai_status.config(text=f"🤖 AI: {ai_provider.title()}")
+            self.ai_status.config(text=f"ðŸ¤– AI: {ai_provider.title()}")
             
             is_guest = self.auth.current_user.get('is_guest', False)
             user_type = "Guest" if is_guest else "User"
             username = self.auth.current_user['username'][:12]
             if len(self.auth.current_user['username']) > 12:
                 username += "..."
-            self.user_status.config(text=f"{'👥' if is_guest else '👤'} {user_type}: {username}")
+            self.user_status.config(text=f"{'ðŸ‘¥' if is_guest else 'ðŸ‘¤'} {user_type}: {username}")
             
-            self.time_status.config(text=f"🕐 {datetime.now().strftime('%H:%M:%S')}")
+            self.time_status.config(text=f"ðŸ• {datetime.now().strftime('%H:%M:%S')}")
             
             # Schedule next update
             self.root.after(1000, self.update_status)
@@ -1648,28 +1811,28 @@ class EnhancedChatbotPro:
         is_guest = self.auth.current_user.get('is_guest', False)
         
         welcome_msg = f"""
-╔{'═' * 60}╗
-║{'🤖 AI PROJECT ASSISTANT PRO v2.1'.center(60)}║
-╠{'═' * 60}╣
-║{' ' * 60}║
-║{'Welcome!'.center(60)}║
-║{' ' * 60}║
-║{'👤 User:'.ljust(20)}{username:<40}║
-║{'🎯 Status:'.ljust(20)}{'🎮 Guest Account' if is_guest else '✅ Registered User':<40}║
-║{' ' * 60}║
-╚{'═' * 60}╝
+â•”{'â•' * 60}â•—
+â•‘{'ðŸ¤– AI PROJECT ASSISTANT PRO v2.1'.center(60)}â•‘
+â• {'â•' * 60}â•£
+â•‘{' ' * 60}â•‘
+â•‘{'Welcome!'.center(60)}â•‘
+â•‘{' ' * 60}â•‘
+â•‘{'ðŸ‘¤ User:'.ljust(20)}{username:<40}â•‘
+â•‘{'ðŸŽ¯ Status:'.ljust(20)}{'ðŸŽ® Guest Account' if is_guest else 'âœ… Registered User':<40}â•‘
+â•‘{' ' * 60}â•‘
+â•š{'â•' * 60}â•
 
-✨ **Getting Started:**
-• Type 'help' to see what I can do
-• Use tabs to manage tasks, notes, and files
-• Configure AI in ⚙️ AI Settings
+âœ¨ **Getting Started:**
+â€¢ Type 'help' to see what I can do
+â€¢ Use tabs to manage tasks, notes, and files
+â€¢ Configure AI in âš™ï¸ AI Settings
 
-💡 **Quick Tips:**
-• Add task: 'Add a task: [description]'
-• Ask: 'What's my progress?'
-• Export data from File menu
+ðŸ’¡ **Quick Tips:**
+â€¢ Add task: 'Add a task: [description]'
+â€¢ Ask: 'What's my progress?'
+â€¢ Export data from File menu
 
-{'⚠️ **Note:** You are using a guest account. Data may be cleaned up after 24 hours.' if is_guest else '✅ **Note:** Your data is securely stored.'}
+{'âš ï¸ **Note:** You are using a guest account. Data may be cleaned up after 24 hours.' if is_guest else 'âœ… **Note:** Your data is securely stored.'}
 """
         
         self.add_message("system", welcome_msg)
@@ -1677,10 +1840,10 @@ class EnhancedChatbotPro:
     def setup_chat_tab(self):
         """Setup modern chat interface"""
         chat_frame = ttk.Frame(self.notebook)
-        self.notebook.add(chat_frame, text='💬 Chat')
+        self.notebook.add(chat_frame, text='ðŸ’¬ Chat')
         
         # Chat display with modern styling
-        display_frame = ttk.LabelFrame(chat_frame, text="💬 Conversation", 
+        display_frame = ttk.LabelFrame(chat_frame, text="ðŸ’¬ Conversation", 
                                       style='Card.TFrame', padding=10)
         display_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
@@ -1718,7 +1881,7 @@ class EnhancedChatbotPro:
         self.char_count.pack(side='right', padx=(0, 10))
         
         # Send button
-        send_btn = ttk.Button(input_frame, text="📤 Send", 
+        send_btn = ttk.Button(input_frame, text="ðŸ“¤ Send", 
                              style='Primary.TButton',
                              command=self.send_message)
         send_btn.pack(side='right')
@@ -1728,10 +1891,10 @@ class EnhancedChatbotPro:
         quick_frame.pack(fill='x', padx=10, pady=(0, 5))
         
         quick_actions = [
-            ("🤖 Help", lambda: self.chat_input.insert(0, "help")),
-            ("📋 Add Task", lambda: self.chat_input.insert(0, "Add a task: ")),
-            ("📊 Progress", lambda: self.chat_input.insert(0, "What's my progress?")),
-            ("🗑️ Clear", self.clear_chat)
+            ("ðŸ¤– Help", lambda: self.chat_input.insert(0, "help")),
+            ("ðŸ“‹ Add Task", lambda: self.chat_input.insert(0, "Add a task: ")),
+            ("ðŸ“Š Progress", lambda: self.chat_input.insert(0, "What's my progress?")),
+            ("ðŸ—‘ï¸ Clear", self.clear_chat)
         ]
         
         for text, command in quick_actions:
@@ -1742,26 +1905,26 @@ class EnhancedChatbotPro:
     def setup_tasks_tab(self):
         """Setup modern tasks interface"""
         tasks_frame = ttk.Frame(self.notebook)
-        self.notebook.add(tasks_frame, text='📋 Tasks')
+        self.notebook.add(tasks_frame, text='ðŸ“‹ Tasks')
         
         # Control panel
         control_frame = ttk.Frame(tasks_frame, style='Card.TFrame', padding=15)
         control_frame.pack(fill='x', padx=10, pady=10)
         
         # Add task button
-        add_btn = ttk.Button(control_frame, text="➕ Add Task", 
+        add_btn = ttk.Button(control_frame, text="âž• Add Task", 
                             style='Success.TButton',
                             command=self.add_task_dialog)
         add_btn.pack(side='left', padx=5)
         
         # Clear completed button
-        clear_btn = ttk.Button(control_frame, text="🗑️ Clear Completed", 
+        clear_btn = ttk.Button(control_frame, text="ðŸ—‘ï¸ Clear Completed", 
                               style='Secondary.TButton',
                               command=self.clear_completed_tasks)
         clear_btn.pack(side='left', padx=5)
         
         # Filter frame
-        filter_frame = ttk.LabelFrame(control_frame, text="🔍 Filters", 
+        filter_frame = ttk.LabelFrame(control_frame, text="ðŸ” Filters", 
                                      style='Card.TFrame', padding=10)
         filter_frame.pack(side='right', padx=10)
         
@@ -1785,7 +1948,7 @@ class EnhancedChatbotPro:
                                       style='Modern.Treeview', selectmode='extended')
         
         self.tasks_tree.heading('#0', text='ID')
-        self.tasks_tree.heading('Status', text='✅')
+        self.tasks_tree.heading('Status', text='âœ…')
         self.tasks_tree.heading('Task', text='Task Description')
         self.tasks_tree.heading('Priority', text='Priority')
         self.tasks_tree.heading('Category', text='Category')
@@ -1811,10 +1974,10 @@ class EnhancedChatbotPro:
         action_frame.pack(fill='x', padx=10, pady=(0, 10))
         
         actions = [
-            ("🔄 Refresh", self.refresh_tasks_list),
-            ("✅ Complete", self.toggle_task_completion),
-            ("✏️ Edit", self.edit_task_dialog),
-            ("🗑️ Delete", self.delete_selected_task)
+            ("ðŸ”„ Refresh", self.refresh_tasks_list),
+            ("âœ… Complete", self.toggle_task_completion),
+            ("âœï¸ Edit", self.edit_task_dialog),
+            ("ðŸ—‘ï¸ Delete", self.delete_selected_task)
         ]
         
         for text, command in actions:
@@ -1827,20 +1990,20 @@ class EnhancedChatbotPro:
     def setup_notes_tab(self):
         """Setup modern notes interface"""
         notes_frame = ttk.Frame(self.notebook)
-        self.notebook.add(notes_frame, text='📝 Notes')
+        self.notebook.add(notes_frame, text='ðŸ“ Notes')
         
         # Control panel
         control_frame = ttk.Frame(notes_frame, style='Card.TFrame', padding=15)
         control_frame.pack(fill='x', padx=10, pady=10)
         
         # Add note button
-        add_btn = ttk.Button(control_frame, text="➕ Add Note", 
+        add_btn = ttk.Button(control_frame, text="âž• Add Note", 
                             style='Success.TButton',
                             command=self.add_note_dialog)
         add_btn.pack(side='left', padx=5)
         
         # Search frame
-        search_frame = ttk.LabelFrame(control_frame, text="🔍 Search Notes", 
+        search_frame = ttk.LabelFrame(control_frame, text="ðŸ” Search Notes", 
                                      style='Card.TFrame', padding=10)
         search_frame.pack(side='right', padx=10)
         
@@ -1862,8 +2025,8 @@ class EnhancedChatbotPro:
         
         self.notes_tree.heading('#0', text='ID')
         self.notes_tree.heading('Title', text='Title')
-        self.notes_tree.heading('Tags', text='🏷️ Tags')
-        self.notes_tree.heading('Modified', text='📅 Last Modified')
+        self.notes_tree.heading('Tags', text='ðŸ·ï¸ Tags')
+        self.notes_tree.heading('Modified', text='ðŸ“… Last Modified')
         
         self.notes_tree.column('#0', width=0, stretch=False)
         self.notes_tree.column('Title', width=350)
@@ -1882,10 +2045,10 @@ class EnhancedChatbotPro:
         action_frame.pack(fill='x', padx=10, pady=(0, 10))
         
         actions = [
-            ("🔄 Refresh", self.refresh_notes_list),
-            ("👁️ View", self.view_note),
-            ("✏️ Edit", self.edit_note_dialog),
-            ("🗑️ Delete", self.delete_selected_note)
+            ("ðŸ”„ Refresh", self.refresh_notes_list),
+            ("ðŸ‘ï¸ View", self.view_note),
+            ("âœï¸ Edit", self.edit_note_dialog),
+            ("ðŸ—‘ï¸ Delete", self.delete_selected_note)
         ]
         
         for text, command in actions:
@@ -1898,14 +2061,14 @@ class EnhancedChatbotPro:
     def setup_files_tab(self):
         """Setup modern files/attachments tab"""
         files_frame = ttk.Frame(self.notebook)
-        self.notebook.add(files_frame, text='📎 Files')
+        self.notebook.add(files_frame, text='ðŸ“Ž Files')
         
         # Upload section
-        upload_frame = ttk.LabelFrame(files_frame, text="📤 Upload File", 
+        upload_frame = ttk.LabelFrame(files_frame, text="ðŸ“¤ Upload File", 
                                      style='Card.TFrame', padding=15)
         upload_frame.pack(fill='x', padx=10, pady=10)
         
-        upload_btn = ttk.Button(upload_frame, text="📁 Choose File", 
+        upload_btn = ttk.Button(upload_frame, text="ðŸ“ Choose File", 
                                style='Primary.TButton',
                                command=self.upload_file)
         upload_btn.pack(side='left', padx=5)
@@ -1915,7 +2078,7 @@ class EnhancedChatbotPro:
                  font=("Segoe UI", 9)).pack(side='left', padx=10)
         
         # Files list
-        list_frame = ttk.LabelFrame(files_frame, text="📂 Uploaded Files", 
+        list_frame = ttk.LabelFrame(files_frame, text="ðŸ“‚ Uploaded Files", 
                                    style='Card.TFrame', padding=15)
         list_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
@@ -1925,10 +2088,10 @@ class EnhancedChatbotPro:
                                       style='Modern.Treeview')
         
         self.files_tree.heading('#0', text='ID')
-        self.files_tree.heading('Filename', text='📄 Filename')
+        self.files_tree.heading('Filename', text='ðŸ“„ Filename')
         self.files_tree.heading('Type', text='Type')
         self.files_tree.heading('Size', text='Size')
-        self.files_tree.heading('Date', text='📅 Uploaded')
+        self.files_tree.heading('Date', text='ðŸ“… Uploaded')
         
         self.files_tree.column('#0', width=0, stretch=False)
         self.files_tree.column('Filename', width=350)
@@ -1948,9 +2111,9 @@ class EnhancedChatbotPro:
         action_frame.pack(fill='x', padx=10, pady=(0, 10))
         
         actions = [
-            ("🔄 Refresh", self.refresh_files_list),
-            ("📂 Open", self.open_selected_file),
-            ("🗑️ Delete", self.delete_selected_file)
+            ("ðŸ”„ Refresh", self.refresh_files_list),
+            ("ðŸ“‚ Open", self.open_selected_file),
+            ("ðŸ—‘ï¸ Delete", self.delete_selected_file)
         ]
         
         for text, command in actions:
@@ -1963,19 +2126,19 @@ class EnhancedChatbotPro:
     def setup_analytics_tab(self):
         """Setup modern analytics dashboard"""
         analytics_frame = ttk.Frame(self.notebook)
-        self.notebook.add(analytics_frame, text='📊 Analytics')
+        self.notebook.add(analytics_frame, text='ðŸ“Š Analytics')
         
         # Stats cards
         stats_frame = ttk.Frame(analytics_frame)
         stats_frame.pack(fill='x', padx=10, pady=10)
         
         stats_data = [
-            ("📋 Total Tasks", len(self.tasks), "#3498db"),
-            ("✅ Completed", sum(1 for t in self.tasks if t['completed']), "#27ae60"),
-            ("⚡ Active", sum(1 for t in self.tasks if not t['completed']), "#f39c12"),
-            ("📝 Total Notes", len(self.notes), "#9b59b6"),
-            ("🔴 High Priority", sum(1 for t in self.tasks if t.get('priority') == 'high'), "#e74c3c"),
-            ("📈 Completion Rate", 
+            ("ðŸ“‹ Total Tasks", len(self.tasks), "#3498db"),
+            ("âœ… Completed", sum(1 for t in self.tasks if t['completed']), "#27ae60"),
+            ("âš¡ Active", sum(1 for t in self.tasks if not t['completed']), "#f39c12"),
+            ("ðŸ“ Total Notes", len(self.notes), "#9b59b6"),
+            ("ðŸ”´ High Priority", sum(1 for t in self.tasks if t.get('priority') == 'high'), "#e74c3c"),
+            ("ðŸ“ˆ Completion Rate", 
              f"{sum(1 for t in self.tasks if t['completed']) / len(self.tasks) * 100:.1f}%" 
              if self.tasks else "0%", "#1abc9c")
         ]
@@ -1994,7 +2157,7 @@ class EnhancedChatbotPro:
             stats_frame.columnconfigure(i, weight=1)
         
         # Charts/Visualizations frame
-        charts_frame = ttk.LabelFrame(analytics_frame, text="📈 Visualizations", 
+        charts_frame = ttk.LabelFrame(analytics_frame, text="ðŸ“ˆ Visualizations", 
                                      style='Card.TFrame', padding=15)
         charts_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
@@ -2014,7 +2177,7 @@ class EnhancedChatbotPro:
         export_frame = ttk.Frame(analytics_frame, padding=10)
         export_frame.pack(fill='x', padx=10, pady=(0, 10))
         
-        ttk.Button(export_frame, text="📊 Export Analytics Report", 
+        ttk.Button(export_frame, text="ðŸ“Š Export Analytics Report", 
                   style='Primary.TButton',
                   command=self.export_analytics).pack()
     
@@ -2023,22 +2186,22 @@ class EnhancedChatbotPro:
         if not self.tasks:
             return "No data available. Start by adding some tasks!"
         
-        chart = "📊 PRODUCTIVITY ANALYTICS\n"
+        chart = "ðŸ“Š PRODUCTIVITY ANALYTICS\n"
         chart += "=" * 60 + "\n\n"
         
         # Task completion chart
         completed = sum(1 for t in self.tasks if t['completed'])
         active = len(self.tasks) - completed
         
-        chart += "📋 TASK COMPLETION:\n"
-        chart += f"✅ Completed: {completed} ({completed/len(self.tasks)*100:.1f}%)\n"
-        chart += f"⚡ Active: {active} ({active/len(self.tasks)*100:.1f}%)\n\n"
+        chart += "ðŸ“‹ TASK COMPLETION:\n"
+        chart += f"âœ… Completed: {completed} ({completed/len(self.tasks)*100:.1f}%)\n"
+        chart += f"âš¡ Active: {active} ({active/len(self.tasks)*100:.1f}%)\n\n"
         
         # Visual progress bar
         total_width = 40
         completed_width = int((completed / len(self.tasks)) * total_width) if self.tasks else 0
         
-        chart += "[" + "█" * completed_width + "░" * (total_width - completed_width) + "]\n\n"
+        chart += "[" + "â–ˆ" * completed_width + "â–‘" * (total_width - completed_width) + "]\n\n"
         
         # Priority distribution
         priorities = {'high': 0, 'medium': 0, 'low': 0}
@@ -2047,16 +2210,16 @@ class EnhancedChatbotPro:
             if prio in priorities:
                 priorities[prio] += 1
         
-        chart += "🎯 PRIORITY DISTRIBUTION:\n"
+        chart += "ðŸŽ¯ PRIORITY DISTRIBUTION:\n"
         max_count = max(priorities.values()) if priorities else 1
         
         for prio, count in priorities.items():
             bar_width = int((count / max_count) * 30) if max_count > 0 else 0
-            emoji = "🔴" if prio == 'high' else "🟡" if prio == 'medium' else "🟢"
-            chart += f"{emoji} {prio.capitalize():7} [{'█' * bar_width:<30}] {count}\n"
+            emoji = "ðŸ”´" if prio == 'high' else "ðŸŸ¡" if prio == 'medium' else "ðŸŸ¢"
+            chart += f"{emoji} {prio.capitalize():7} [{'â–ˆ' * bar_width:<30}] {count}\n"
         
         chart += "\n" + "=" * 60 + "\n"
-        chart += f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+        chart += f"ðŸ“… Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
         
         return chart
     
@@ -2070,11 +2233,11 @@ class EnhancedChatbotPro:
         
         # Add sender with appropriate tag
         if sender.lower() == "you":
-            self.chat_display.insert(tk.END, "👤 You: ", "user")
+            self.chat_display.insert(tk.END, "ðŸ‘¤ You: ", "user")
         elif sender.lower() == "bot":
-            self.chat_display.insert(tk.END, "🤖 Assistant: ", "bot")
+            self.chat_display.insert(tk.END, "ðŸ¤– Assistant: ", "bot")
         else:
-            self.chat_display.insert(tk.END, f"📢 {sender}: ", "system")
+            self.chat_display.insert(tk.END, f"ðŸ“¢ {sender}: ", "system")
             
         # Add message text
         self.chat_display.insert(tk.END, f"{text}\n\n")
@@ -2090,7 +2253,7 @@ class EnhancedChatbotPro:
             return
         
         if len(msg) > 500:
-            messagebox.showwarning("⚠️ Message Too Long", 
+            messagebox.showwarning("âš ï¸ Message Too Long", 
                                  "Please keep messages under 500 characters.")
             return
             
@@ -2106,7 +2269,7 @@ class EnhancedChatbotPro:
         
         # Show typing indicator
         self.chat_display.config(state='normal')
-        self.chat_display.insert(tk.END, "🤖 Assistant is typing...\n", "system")
+        self.chat_display.insert(tk.END, "ðŸ¤– Assistant is typing...\n", "system")
         self.chat_display.see(tk.END)
         self.chat_display.config(state='disabled')
         self.root.update()
@@ -2173,13 +2336,13 @@ class EnhancedChatbotPro:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"⚠️ Failed to log conversation: {e}")
+            print(f"âš ï¸ Failed to log conversation: {e}")
     
     # Task management methods
     def add_task_dialog(self):
         """Show modern dialog to add new task"""
         dialog = tk.Toplevel(self.root)
-        dialog.title("➕ Add New Task")
+        dialog.title("âž• Add New Task")
         dialog.geometry("450x400")
         dialog.transient(self.root)
         dialog.configure(bg=self.colors['background'])
@@ -2194,7 +2357,7 @@ class EnhancedChatbotPro:
         frame.pack(fill='both', expand=True)
         
         # Title
-        ttk.Label(frame, text="➕ Add New Task", style='Title.TLabel').pack(pady=(0, 20))
+        ttk.Label(frame, text="âž• Add New Task", style='Title.TLabel').pack(pady=(0, 20))
         
         # Task description
         ttk.Label(frame, text="Task Description:", font=("Segoe UI", 10)).pack(anchor='w', pady=(0, 5))
@@ -2209,7 +2372,7 @@ class EnhancedChatbotPro:
         priority_frame = ttk.Frame(frame)
         priority_frame.pack(anchor='w', pady=(0, 10))
         
-        priorities = [("🔴 High", "high"), ("🟡 Medium", "medium"), ("🟢 Low", "low")]
+        priorities = [("ðŸ”´ High", "high"), ("ðŸŸ¡ Medium", "medium"), ("ðŸŸ¢ Low", "low")]
         for text, value in priorities:
             ttk.Radiobutton(priority_frame, text=text, variable=priority_var, 
                            value=value).pack(side='left', padx=5)
@@ -2223,7 +2386,7 @@ class EnhancedChatbotPro:
         def save_task():
             text = task_text.get("1.0", tk.END).strip()
             if not text:
-                messagebox.showwarning("⚠️ Input Required", 
+                messagebox.showwarning("âš ï¸ Input Required", 
                                      "Please enter task description!")
                 return
             
@@ -2243,7 +2406,7 @@ class EnhancedChatbotPro:
             dialog.destroy()
             
             # Show success message
-            self.add_message("system", f"✅ Task added: {text[:50]}...")
+            self.add_message("system", f"âœ… Task added: {text[:50]}...")
         
         # Buttons
         btn_frame = ttk.Frame(frame)
@@ -2271,16 +2434,16 @@ class EnhancedChatbotPro:
         
         # Add tasks to treeview
         for task in filtered_tasks:
-            status = "✅" if task['completed'] else "⚡"
+            status = "âœ…" if task['completed'] else "âš¡"
             
             # Color code priority
             priority = task.get('priority', 'medium')
             if priority == 'high':
-                priority_display = "🔴 High"
+                priority_display = "ðŸ”´ High"
             elif priority == 'medium':
-                priority_display = "🟡 Medium"
+                priority_display = "ðŸŸ¡ Medium"
             else:
-                priority_display = "🟢 Low"
+                priority_display = "ðŸŸ¢ Low"
             
             category = task.get('category', 'general').capitalize()
             
@@ -2294,7 +2457,7 @@ class EnhancedChatbotPro:
         """Toggle task completion status"""
         selection = self.tasks_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a task!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a task!")
             return
         
         item = selection[0]
@@ -2308,17 +2471,17 @@ class EnhancedChatbotPro:
                 break
         
         if not selected_task:
-            messagebox.showerror("❌ Error", "Task not found!")
+            messagebox.showerror("âŒ Error", "Task not found!")
             return
         
         selected_task['completed'] = not selected_task['completed']
         if selected_task['completed']:
             selected_task['completed_date'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-            messagebox.showinfo("✅ Task Completed", 
+            messagebox.showinfo("âœ… Task Completed", 
                               f"Task marked as completed!")
         else:
             selected_task['completed_date'] = None
-            messagebox.showinfo("⚡ Task Reactivated", 
+            messagebox.showinfo("âš¡ Task Reactivated", 
                               f"Task marked as active!")
         
         self.save_task(selected_task)
@@ -2329,7 +2492,7 @@ class EnhancedChatbotPro:
         """Edit selected task"""
         selection = self.tasks_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a task!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a task!")
             return
         
         item = selection[0]
@@ -2343,12 +2506,12 @@ class EnhancedChatbotPro:
                 break
         
         if not selected_task:
-            messagebox.showerror("❌ Error", "Task not found!")
+            messagebox.showerror("âŒ Error", "Task not found!")
             return
         
         # Create edit dialog
         dialog = tk.Toplevel(self.root)
-        dialog.title("✏️ Edit Task")
+        dialog.title("âœï¸ Edit Task")
         dialog.geometry("450x400")
         dialog.transient(self.root)
         dialog.configure(bg=self.colors['background'])
@@ -2356,7 +2519,7 @@ class EnhancedChatbotPro:
         frame = ttk.Frame(dialog, style='Card.TFrame', padding=20)
         frame.pack(fill='both', expand=True)
         
-        ttk.Label(frame, text="✏️ Edit Task", style='Title.TLabel').pack(pady=(0, 20))
+        ttk.Label(frame, text="âœï¸ Edit Task", style='Title.TLabel').pack(pady=(0, 20))
         
         # Task description
         ttk.Label(frame, text="Task Description:", font=("Segoe UI", 10)).pack(anchor='w', pady=(0, 5))
@@ -2371,7 +2534,7 @@ class EnhancedChatbotPro:
         priority_frame = ttk.Frame(frame)
         priority_frame.pack(anchor='w', pady=(0, 10))
         
-        priorities = [("🔴 High", "high"), ("🟡 Medium", "medium"), ("🟢 Low", "low")]
+        priorities = [("ðŸ”´ High", "high"), ("ðŸŸ¡ Medium", "medium"), ("ðŸŸ¢ Low", "low")]
         for text, value in priorities:
             ttk.Radiobutton(priority_frame, text=text, variable=priority_var, 
                            value=value).pack(side='left', padx=5)
@@ -2385,7 +2548,7 @@ class EnhancedChatbotPro:
         def save_changes():
             text = task_text.get("1.0", tk.END).strip()
             if not text:
-                messagebox.showwarning("⚠️ Input Required", 
+                messagebox.showwarning("âš ï¸ Input Required", 
                                      "Please enter task description!")
                 return
             
@@ -2401,16 +2564,16 @@ class EnhancedChatbotPro:
             self.refresh_tasks_list()
             
             dialog.destroy()
-            messagebox.showinfo("✅ Success", "Task updated successfully!")
-            self.add_message("system", f"✅ Task updated: {text[:50]}...")
+            messagebox.showinfo("âœ… Success", "Task updated successfully!")
+            self.add_message("system", f"âœ… Task updated: {text[:50]}...")
         
         # Buttons
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill='x', pady=10)
         
-        ttk.Button(btn_frame, text="💾 Save Changes", style='Success.TButton',
+        ttk.Button(btn_frame, text="ðŸ’¾ Save Changes", style='Success.TButton',
                   command=save_changes, width=15).pack(side='right', padx=5)
-        ttk.Button(btn_frame, text="❌ Cancel", style='Secondary.TButton',
+        ttk.Button(btn_frame, text="âŒ Cancel", style='Secondary.TButton',
                   command=dialog.destroy, width=10).pack(side='right', padx=5)
         
         dialog.focus_set()
@@ -2419,10 +2582,10 @@ class EnhancedChatbotPro:
         """Delete selected task"""
         selection = self.tasks_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a task!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a task!")
             return
         
-        if not messagebox.askyesno("🗑️ Confirm Delete", 
+        if not messagebox.askyesno("ðŸ—‘ï¸ Confirm Delete", 
                                   "Delete selected task permanently?"):
             return
         
@@ -2437,7 +2600,7 @@ class EnhancedChatbotPro:
                 break
         
         if not task_to_delete:
-            messagebox.showerror("❌ Error", "Task not found!")
+            messagebox.showerror("âŒ Error", "Task not found!")
             return
         
         # Remove from database if it has an ID
@@ -2449,24 +2612,24 @@ class EnhancedChatbotPro:
                 conn.commit()
                 conn.close()
             except Exception as e:
-                print(f"⚠️ Failed to delete task from database: {e}")
+                print(f"âš ï¸ Failed to delete task from database: {e}")
         
         # Remove from list
         self.tasks.remove(task_to_delete)
         
         self.refresh_tasks_list()
         self.update_status()
-        messagebox.showinfo("✅ Deleted", "Task deleted successfully!")
+        messagebox.showinfo("âœ… Deleted", "Task deleted successfully!")
     
     def clear_completed_tasks(self):
         """Clear all completed tasks"""
         completed_tasks = [t for t in self.tasks if t['completed']]
         
         if not completed_tasks:
-            messagebox.showinfo("ℹ️ No Tasks", "No completed tasks to delete!")
+            messagebox.showinfo("â„¹ï¸ No Tasks", "No completed tasks to delete!")
             return
         
-        if not messagebox.askyesno("🗑️ Confirm Clear", 
+        if not messagebox.askyesno("ðŸ—‘ï¸ Confirm Clear", 
                                   f"Delete {len(completed_tasks)} completed tasks?"):
             return
         
@@ -2480,20 +2643,20 @@ class EnhancedChatbotPro:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"⚠️ Failed to delete tasks from database: {e}")
+            print(f"âš ï¸ Failed to delete tasks from database: {e}")
         
         # Remove from list
         self.tasks = [t for t in self.tasks if not t['completed']]
         
         self.refresh_tasks_list()
         self.update_status()
-        messagebox.showinfo("✅ Cleared", f"Deleted {len(completed_tasks)} completed tasks!")
+        messagebox.showinfo("âœ… Cleared", f"Deleted {len(completed_tasks)} completed tasks!")
     
     # Note management methods
     def add_note_dialog(self):
         """Show modern dialog to add new note"""
         dialog = tk.Toplevel(self.root)
-        dialog.title("➕ Add New Note")
+        dialog.title("âž• Add New Note")
         dialog.geometry("500x500")
         dialog.transient(self.root)
         dialog.configure(bg=self.colors['background'])
@@ -2501,7 +2664,7 @@ class EnhancedChatbotPro:
         frame = ttk.Frame(dialog, style='Card.TFrame', padding=20)
         frame.pack(fill='both', expand=True)
         
-        ttk.Label(frame, text="➕ Add New Note", style='Title.TLabel').pack(pady=(0, 20))
+        ttk.Label(frame, text="âž• Add New Note", style='Title.TLabel').pack(pady=(0, 20))
         
         ttk.Label(frame, text="Note Title:", font=("Segoe UI", 10)).pack(anchor='w', pady=(0, 5))
         title_entry = ttk.Entry(frame, width=50, style='Modern.TEntry')
@@ -2523,7 +2686,7 @@ class EnhancedChatbotPro:
             tags = tags_entry.get().strip()
             
             if not title:
-                messagebox.showwarning("⚠️ Input Required", "Please enter note title!")
+                messagebox.showwarning("âš ï¸ Input Required", "Please enter note title!")
                 return
             
             if not content:
@@ -2542,7 +2705,7 @@ class EnhancedChatbotPro:
             self.update_status()
             dialog.destroy()
             
-            self.add_message("system", f"✅ Note added: {title}")
+            self.add_message("system", f"âœ… Note added: {title}")
         
         # Buttons
         btn_frame = ttk.Frame(frame)
@@ -2578,7 +2741,7 @@ class EnhancedChatbotPro:
         """View selected note"""
         selection = self.notes_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a note!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a note!")
             return
         
         item = selection[0]
@@ -2596,7 +2759,7 @@ class EnhancedChatbotPro:
         
         # Create view dialog
         dialog = tk.Toplevel(self.root)
-        dialog.title(f"📝 {selected_note['title'][:30]}...")
+        dialog.title(f"ðŸ“ {selected_note['title'][:30]}...")
         dialog.geometry("600x500")
         dialog.transient(self.root)
         dialog.configure(bg=self.colors['background'])
@@ -2612,11 +2775,11 @@ class EnhancedChatbotPro:
         meta_frame = ttk.Frame(frame)
         meta_frame.pack(anchor='w', pady=(0, 20), fill='x')
         
-        ttk.Label(meta_frame, text=f"📅 Created: {selected_note['created'][:16]}",
+        ttk.Label(meta_frame, text=f"ðŸ“… Created: {selected_note['created'][:16]}",
                  font=("Segoe UI", 9)).pack(side='left', padx=(0, 20))
         
         if selected_note.get('tags'):
-            ttk.Label(meta_frame, text=f"🏷️ Tags: {selected_note['tags']}",
+            ttk.Label(meta_frame, text=f"ðŸ·ï¸ Tags: {selected_note['tags']}",
                      font=("Segoe UI", 9)).pack(side='left')
         
         # Content
@@ -2638,7 +2801,7 @@ class EnhancedChatbotPro:
         """Edit selected note"""
         selection = self.notes_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a note!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a note!")
             return
         
         item = selection[0]
@@ -2652,12 +2815,12 @@ class EnhancedChatbotPro:
                 break
         
         if not selected_note:
-            messagebox.showerror("❌ Error", "Note not found!")
+            messagebox.showerror("âŒ Error", "Note not found!")
             return
         
         # Create the edit dialog
         dialog = tk.Toplevel(self.root)
-        dialog.title("✏️ Edit Note")
+        dialog.title("âœï¸ Edit Note")
         dialog.geometry("500x500")
         dialog.transient(self.root)
         dialog.configure(bg=self.colors['background'])
@@ -2671,7 +2834,7 @@ class EnhancedChatbotPro:
         frame = ttk.Frame(dialog, style='Card.TFrame', padding=20)
         frame.pack(fill='both', expand=True)
         
-        ttk.Label(frame, text="✏️ Edit Note", style='Title.TLabel').pack(pady=(0, 20))
+        ttk.Label(frame, text="âœï¸ Edit Note", style='Title.TLabel').pack(pady=(0, 20))
         
         ttk.Label(frame, text="Note Title:", font=("Segoe UI", 10)).pack(anchor='w', pady=(0, 5))
         title_entry = ttk.Entry(frame, width=50, style='Modern.TEntry')
@@ -2695,7 +2858,7 @@ class EnhancedChatbotPro:
             tags = tags_entry.get().strip()
             
             if not title:
-                messagebox.showwarning("⚠️ Input Required", "Please enter note title!")
+                messagebox.showwarning("âš ï¸ Input Required", "Please enter note title!")
                 return
             
             if not content:
@@ -2714,16 +2877,16 @@ class EnhancedChatbotPro:
             self.refresh_notes_list()
             
             dialog.destroy()
-            messagebox.showinfo("✅ Success", "Note updated successfully!")
-            self.add_message("system", f"✅ Note updated: {title}")
+            messagebox.showinfo("âœ… Success", "Note updated successfully!")
+            self.add_message("system", f"âœ… Note updated: {title}")
         
         # Buttons
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill='x', pady=10)
         
-        ttk.Button(btn_frame, text="💾 Save Changes", style='Success.TButton',
+        ttk.Button(btn_frame, text="ðŸ’¾ Save Changes", style='Success.TButton',
                   command=save_changes, width=15).pack(side='right', padx=5)
-        ttk.Button(btn_frame, text="❌ Cancel", style='Secondary.TButton',
+        ttk.Button(btn_frame, text="âŒ Cancel", style='Secondary.TButton',
                   command=dialog.destroy, width=10).pack(side='right', padx=5)
         
         dialog.focus_set()
@@ -2732,10 +2895,10 @@ class EnhancedChatbotPro:
         """Delete selected note"""
         selection = self.notes_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a note!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a note!")
             return
         
-        if not messagebox.askyesno("🗑️ Confirm Delete", 
+        if not messagebox.askyesno("ðŸ—‘ï¸ Confirm Delete", 
                                   "Delete selected note permanently?"):
             return
         
@@ -2750,7 +2913,7 @@ class EnhancedChatbotPro:
                 break
         
         if not note_to_delete:
-            messagebox.showerror("❌ Error", "Note not found!")
+            messagebox.showerror("âŒ Error", "Note not found!")
             return
         
         # Remove from database if it has an ID
@@ -2762,26 +2925,26 @@ class EnhancedChatbotPro:
                 conn.commit()
                 conn.close()
             except Exception as e:
-                print(f"⚠️ Failed to delete note from database: {e}")
+                print(f"âš ï¸ Failed to delete note from database: {e}")
         
         # Remove from list
         self.notes.remove(note_to_delete)
         
         self.refresh_notes_list()
         self.update_status()
-        messagebox.showinfo("✅ Deleted", "Note deleted successfully!")
+        messagebox.showinfo("âœ… Deleted", "Note deleted successfully!")
     
     # File management methods
     def upload_file(self):
         """Upload a file"""
         file_path = filedialog.askopenfilename(
-            title="📁 Select File to Upload",
+            title="ðŸ“ Select File to Upload",
             filetypes=[
-                ("📄 All Files", "*.*"),
-                ("📊 PDF Files", "*.pdf"),
-                ("📝 Text Files", "*.txt"),
-                ("🖼️ Images", "*.png *.jpg *.jpeg *.gif"),
-                ("📑 Documents", "*.docx *.doc *.pptx *.ppt")
+                ("ðŸ“„ All Files", "*.*"),
+                ("ðŸ“Š PDF Files", "*.pdf"),
+                ("ðŸ“ Text Files", "*.txt"),
+                ("ðŸ–¼ï¸ Images", "*.png *.jpg *.jpeg *.gif"),
+                ("ðŸ“‘ Documents", "*.docx *.doc *.pptx *.ppt")
             ]
         )
         
@@ -2806,10 +2969,10 @@ class EnhancedChatbotPro:
             progress.destroy()
             
             if success:
-                messagebox.showinfo("✅ Success", message)
+                messagebox.showinfo("âœ… Success", message)
                 self.refresh_files_list()
             else:
-                messagebox.showerror("❌ Upload Failed", message)
+                messagebox.showerror("âŒ Upload Failed", message)
         
         threading.Thread(target=upload_thread, daemon=True).start()
     
@@ -2823,7 +2986,7 @@ class EnhancedChatbotPro:
         try:
             files = self.file_manager.get_user_files(user_id)
         except Exception as e:
-            print(f"⚠️ Failed to load files: {e}")
+            print(f"âš ï¸ Failed to load files: {e}")
             return
         
         for file in files:
@@ -2847,34 +3010,34 @@ class EnhancedChatbotPro:
     def get_file_icon(self, file_type):
         """Get appropriate icon for file type"""
         if not file_type:
-            return "📄"
+            return "ðŸ“„"
         
         file_type = file_type.lower()
         
         if '.pdf' in file_type:
-            return "📊"
+            return "ðŸ“Š"
         elif any(ext in file_type for ext in ['.txt', '.md', '.rtf', '.json', '.xml']):
-            return "📝"
+            return "ðŸ“"
         elif any(ext in file_type for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg']):
-            return "🖼️"
+            return "ðŸ–¼ï¸"
         elif any(ext in file_type for ext in ['.doc', '.docx']):
-            return "📑"
+            return "ðŸ“‘"
         elif any(ext in file_type for ext in ['.xls', '.xlsx', '.csv']):
-            return "📊"
+            return "ðŸ“Š"
         elif any(ext in file_type for ext in ['.zip', '.rar', '.7z', '.tar', '.gz']):
-            return "📦"
+            return "ðŸ“¦"
         elif any(ext in file_type for ext in ['.mp3', '.wav', '.flac']):
-            return "🎵"
+            return "ðŸŽµ"
         elif any(ext in file_type for ext in ['.mp4', '.avi', '.mkv', '.mov']):
-            return "🎬"
+            return "ðŸŽ¬"
         else:
-            return "📄"
+            return "ðŸ“„"
     
     def open_selected_file(self):
         """Open selected file"""
         selection = self.files_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a file!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a file!")
             return
         
         file_id = int(selection[0])
@@ -2888,16 +3051,16 @@ class EnhancedChatbotPro:
                     webbrowser.open(f"file://{os.path.abspath(file_path)}")
                     return
         except Exception as e:
-            messagebox.showerror("❌ Error", f"Could not open file: {str(e)}")
+            messagebox.showerror("âŒ Error", f"Could not open file: {str(e)}")
     
     def delete_selected_file(self):
         """Delete selected file"""
         selection = self.files_tree.selection()
         if not selection:
-            messagebox.showwarning("⚠️ No Selection", "Please select a file!")
+            messagebox.showwarning("âš ï¸ No Selection", "Please select a file!")
             return
         
-        if not messagebox.askyesno("🗑️ Confirm Delete", 
+        if not messagebox.askyesno("ðŸ—‘ï¸ Confirm Delete", 
                                   "Delete this file permanently?\nThis action cannot be undone."):
             return
         
@@ -2907,9 +3070,9 @@ class EnhancedChatbotPro:
         success, message = self.file_manager.delete_file(file_id, self.auth.current_user['id'])
         if success:
             self.refresh_files_list()
-            messagebox.showinfo("✅ Deleted", "File deleted successfully!")
+            messagebox.showinfo("âœ… Deleted", "File deleted successfully!")
         else:
-            messagebox.showerror("❌ Error", f"Failed to delete file: {message}")
+            messagebox.showerror("âŒ Error", f"Failed to delete file: {message}")
     
     def save_task(self, task):
         """Save task to database"""
@@ -2955,7 +3118,7 @@ class EnhancedChatbotPro:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"⚠️ Failed to save task: {e}")
+            print(f"âš ï¸ Failed to save task: {e}")
     
     def save_note(self, note):
         """Save note to database"""
@@ -3002,20 +3165,20 @@ class EnhancedChatbotPro:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"⚠️ Failed to save note: {e}")
+            print(f"âš ï¸ Failed to save note: {e}")
     
     # Export methods
     def export_to_pdf(self):
         """Export data to PDF"""
         if not PDF_AVAILABLE:
-            messagebox.showerror("❌ PDF Not Available", 
+            messagebox.showerror("âŒ PDF Not Available", 
                                "PDF export requires reportlab library.\n\n"
-                               "💡 Install with: pip install reportlab")
+                               "ðŸ’¡ Install with: pip install reportlab")
             return
         
         filename = filedialog.asksaveasfilename(
             defaultextension=".pdf",
-            filetypes=[("📊 PDF files", "*.pdf")],
+            filetypes=[("ðŸ“Š PDF files", "*.pdf")],
             initialfile=f"chatbot_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         )
         
@@ -3038,10 +3201,10 @@ class EnhancedChatbotPro:
             progress.destroy()
             
             if success:
-                if messagebox.askyesno("✅ Success", message + "\n\nOpen the file now?"):
+                if messagebox.askyesno("âœ… Success", message + "\n\nOpen the file now?"):
                     webbrowser.open(f"file://{os.path.abspath(filename)}")
             else:
-                messagebox.showerror("❌ Export Failed", message)
+                messagebox.showerror("âŒ Export Failed", message)
         
         threading.Thread(target=export_thread, daemon=True).start()
     
@@ -3049,7 +3212,7 @@ class EnhancedChatbotPro:
         """Export data to Markdown"""
         filename = filedialog.asksaveasfilename(
             defaultextension=".md",
-            filetypes=[("📝 Markdown files", "*.md"), ("📄 Text files", "*.txt")],
+            filetypes=[("ðŸ“ Markdown files", "*.md"), ("ðŸ“„ Text files", "*.txt")],
             initialfile=f"chatbot_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         )
         
@@ -3071,10 +3234,10 @@ class EnhancedChatbotPro:
             progress.destroy()
             
             if success:
-                if messagebox.askyesno("✅ Success", message + "\n\nOpen the file now?"):
+                if messagebox.askyesno("âœ… Success", message + "\n\nOpen the file now?"):
                     webbrowser.open(f"file://{os.path.abspath(filename)}")
             else:
-                messagebox.showerror("❌ Export Failed", message)
+                messagebox.showerror("âŒ Export Failed", message)
         
         threading.Thread(target=export_thread, daemon=True).start()
     
@@ -3082,7 +3245,7 @@ class EnhancedChatbotPro:
         """Export analytics report"""
         filename = filedialog.asksaveasfilename(
             defaultextension=".txt",
-            filetypes=[("📄 Text files", "*.txt"), ("📝 Markdown files", "*.md")],
+            filetypes=[("ðŸ“„ Text files", "*.txt"), ("ðŸ“ Markdown files", "*.md")],
             initialfile=f"analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         )
         
@@ -3093,16 +3256,16 @@ class EnhancedChatbotPro:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(self.generate_ascii_chart())
             
-            messagebox.showinfo("✅ Success", 
+            messagebox.showinfo("âœ… Success", 
                               f"Analytics report exported to:\n{filename}")
         except Exception as e:
-            messagebox.showerror("❌ Export Failed", f"Error: {str(e)}")
+            messagebox.showerror("âŒ Export Failed", f"Error: {str(e)}")
     
     def import_data(self):
         """Import data from JSON"""
         filename = filedialog.askopenfilename(
-            title="📥 Import Data",
-            filetypes=[("📊 JSON files", "*.json"), ("📄 All files", "*.*")]
+            title="ðŸ“¥ Import Data",
+            filetypes=[("ðŸ“Š JSON files", "*.json"), ("ðŸ“„ All files", "*.*")]
         )
         
         if not filename:
@@ -3115,7 +3278,7 @@ class EnhancedChatbotPro:
             task_count = len(import_data.get('tasks', []))
             note_count = len(import_data.get('notes', []))
             
-            if not messagebox.askyesno("📥 Confirm Import",
+            if not messagebox.askyesno("ðŸ“¥ Confirm Import",
                                       f"Import {task_count} tasks and {note_count} notes?\n\n"
                                       "This will add to your existing data."):
                 return
@@ -3138,18 +3301,140 @@ class EnhancedChatbotPro:
             
             self.update_status()
             
-            messagebox.showinfo("✅ Import Successful", 
-                              f"✓ Imported:\n"
-                              f"📋 Tasks: {imported_tasks}\n"
-                              f"📝 Notes: {imported_notes}")
+            messagebox.showinfo("âœ… Import Successful", 
+                              f"âœ“ Imported:\n"
+                              f"ðŸ“‹ Tasks: {imported_tasks}\n"
+                              f"ðŸ“ Notes: {imported_notes}")
         except Exception as e:
-            messagebox.showerror("❌ Import Failed", f"Error: {str(e)}")
+            messagebox.showerror("âŒ Import Failed", f"Error: {str(e)}")
     
+    def show_security_settings(self):
+        """Show MFA (2FA) setup dialog."""
+        if self.auth.current_user.get('is_guest', False):
+            messagebox.showwarning("Guest Account", "Create a permanent account before enabling MFA.")
+            return
+
+        if not MFA_AVAILABLE:
+            messagebox.showerror(
+                "MFA Not Available",
+                "Required packages are missing.\nInstall: pyotp and qrcode[pil]"
+            )
+            return
+
+        user_id = self.auth.current_user['id']
+        username = self.auth.current_user['username']
+        mfa_enabled = self.auth.get_mfa_status(user_id)
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Security Settings (2FA)")
+        dialog.geometry("560x660")
+        dialog.transient(self.root)
+        dialog.configure(bg=self.colors['background'])
+
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (560 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (660 // 2)
+        dialog.geometry(f"560x660+{x}+{y}")
+
+        frame = ttk.Frame(dialog, style='Card.TFrame', padding=20)
+        frame.pack(fill='both', expand=True)
+
+        ttk.Label(frame, text="Security: Two-Factor Authentication", style='Title.TLabel').pack(pady=(0, 10))
+        status_text = "Enabled" if mfa_enabled else "Disabled"
+        ttk.Label(frame, text=f"Current status: {status_text}", font=("Segoe UI", 10, "bold")).pack(anchor='w', pady=(0, 10))
+
+        qr_label = ttk.Label(frame)
+        qr_label.pack(pady=(10, 10))
+        secret_var = tk.StringVar(value="")
+        recovery_text = tk.Text(frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
+        code_entry = ttk.Entry(frame, style='Modern.TEntry')
+
+        pending_setup = {"secret": None, "recovery_codes": None}
+
+        def render_qr(uri):
+            qr_img = qrcode.make(uri).resize((220, 220))
+            qr_photo = ImageTk.PhotoImage(qr_img)
+            qr_label.configure(image=qr_photo)
+            qr_label.image = qr_photo
+
+        def start_setup():
+            ok, msg, data = self.auth.create_mfa_setup(user_id, username)
+            if not ok:
+                messagebox.showerror("MFA Setup Failed", msg)
+                return
+
+            pending_setup["secret"] = data["secret"]
+            pending_setup["recovery_codes"] = data["recovery_codes"]
+            secret_var.set(data["secret"])
+            render_qr(data["provisioning_uri"])
+
+            recovery_text.delete("1.0", tk.END)
+            recovery_text.insert(
+                tk.END,
+                "Save these backup codes in a safe place (each can be used once):\n\n"
+                + "\n".join(data["recovery_codes"])
+            )
+
+        def confirm_enable():
+            if not pending_setup["secret"]:
+                messagebox.showwarning("Setup Required", "Generate setup QR first.")
+                return
+            otp = code_entry.get().strip()
+            if not otp:
+                messagebox.showwarning("Code Required", "Enter authenticator code.")
+                return
+            ok, msg = self.auth.enable_mfa(
+                user_id,
+                pending_setup["secret"],
+                otp,
+                pending_setup["recovery_codes"]
+            )
+            if ok:
+                self.auth.current_user['mfa_enabled'] = True
+                messagebox.showinfo("MFA Enabled", "Two-factor authentication has been enabled.")
+                dialog.destroy()
+            else:
+                messagebox.showerror("MFA Enable Failed", msg)
+
+        def disable_mfa():
+            otp = simpledialog.askstring(
+                "Disable 2FA",
+                "Enter authenticator or backup code to disable MFA:",
+                parent=dialog
+            )
+            if not otp:
+                return
+            ok, msg = self.auth.disable_mfa(user_id, otp)
+            if ok:
+                self.auth.current_user['mfa_enabled'] = False
+                messagebox.showinfo("MFA Disabled", msg)
+                dialog.destroy()
+            else:
+                messagebox.showerror("Disable Failed", msg)
+
+        if not mfa_enabled:
+            ttk.Button(frame, text="Generate QR Setup", style='Primary.TButton', command=start_setup).pack(fill='x', pady=(0, 10))
+            ttk.Label(frame, text="Manual secret:", font=("Segoe UI", 9, "bold")).pack(anchor='w')
+            ttk.Entry(frame, textvariable=secret_var, state='readonly').pack(fill='x', pady=(0, 10))
+            ttk.Label(frame, text="Enter authenticator code to confirm:", font=("Segoe UI", 9, "bold")).pack(anchor='w')
+            code_entry.pack(fill='x', pady=(0, 10))
+            ttk.Button(frame, text="Enable MFA", style='Success.TButton', command=confirm_enable).pack(fill='x', pady=(0, 10))
+            ttk.Label(frame, text="Backup codes:", font=("Segoe UI", 9, "bold")).pack(anchor='w')
+            recovery_text.pack(fill='both', expand=True)
+        else:
+            info = (
+                "MFA is enabled for this account.\n\n"
+                "To disable MFA, click the button below and provide a current "
+                "authenticator code or a backup code."
+            )
+            ttk.Label(frame, text=info, justify='left').pack(anchor='w', pady=(10, 20))
+            ttk.Button(frame, text="Disable MFA", style='Danger.TButton', command=disable_mfa).pack(fill='x')
+
     # AI Settings
     def show_ai_settings(self):
         """Show modern AI configuration dialog"""
         settings_window = tk.Toplevel(self.root)
-        settings_window.title("⚙️ AI Settings")
+        settings_window.title("âš™ï¸ AI Settings")
         settings_window.geometry("500x500")
         settings_window.transient(self.root)
         settings_window.configure(bg=self.colors['background'])
@@ -3164,7 +3449,7 @@ class EnhancedChatbotPro:
         frame.pack(fill='both', expand=True)
         
         # Title
-        ttk.Label(frame, text="⚙️ AI Backend Configuration", 
+        ttk.Label(frame, text="âš™ï¸ AI Backend Configuration", 
                  style='Title.TLabel').pack(pady=(0, 20))
         
         # Provider selection
@@ -3190,22 +3475,22 @@ class EnhancedChatbotPro:
         model_entry.pack(pady=(0, 20), fill='x')
         
         # Info text
-        info_frame = ttk.LabelFrame(frame, text="📚 Configuration Guide", 
+        info_frame = ttk.LabelFrame(frame, text="ðŸ“š Configuration Guide", 
                                    style='Card.TFrame', padding=15)
         info_frame.pack(fill='both', expand=True, pady=(0, 20))
         
         info_text = """
-🤖 **Local:** No API needed, basic responses
-⚡ **OpenAI:** Requires OpenAI API key
-   • Models: gpt-4, gpt-3.5-turbo
-🎨 **Anthropic:** Requires Anthropic API key
-   • Models: claude-3-sonnet-20240229
+ðŸ¤– **Local:** No API needed, basic responses
+âš¡ **OpenAI:** Requires OpenAI API key
+   â€¢ Models: gpt-4, gpt-3.5-turbo
+ðŸŽ¨ **Anthropic:** Requires Anthropic API key
+   â€¢ Models: claude-3-sonnet-20240229
 
-🔑 **Get API keys from:**
-• OpenAI: https://platform.openai.com
-• Anthropic: https://console.anthropic.com
+ðŸ”‘ **Get API keys from:**
+â€¢ OpenAI: https://platform.openai.com
+â€¢ Anthropic: https://console.anthropic.com
 
-💡 **Tip:** Start with Local if you don't have API keys
+ðŸ’¡ **Tip:** Start with Local if you don't have API keys
         """
         
         info_label = ttk.Label(info_frame, text=info_text, 
@@ -3239,12 +3524,12 @@ class EnhancedChatbotPro:
                 conn.commit()
                 conn.close()
                 
-                messagebox.showinfo("✅ Settings Saved", 
+                messagebox.showinfo("âœ… Settings Saved", 
                                   "AI settings updated successfully!")
                 settings_window.destroy()
                 self.update_status()
             except Exception as e:
-                messagebox.showerror("❌ Save Failed", f"Failed to save settings: {e}")
+                messagebox.showerror("âŒ Save Failed", f"Failed to save settings: {e}")
         
         # Buttons
         btn_frame = ttk.Frame(frame)
@@ -3259,12 +3544,12 @@ class EnhancedChatbotPro:
     def upgrade_guest(self):
         """Upgrade guest to permanent account"""
         if not self.auth.current_user.get('is_guest', False):
-            messagebox.showinfo("ℹ️ Already Registered", 
+            messagebox.showinfo("â„¹ï¸ Already Registered", 
                               "You already have a permanent account!")
             return
         
         dialog = tk.Toplevel(self.root)
-        dialog.title("⭐ Upgrade to Permanent Account")
+        dialog.title("â­ Upgrade to Permanent Account")
         dialog.geometry("450x450")
         dialog.transient(self.root)
         dialog.configure(bg=self.colors['background'])
@@ -3272,7 +3557,7 @@ class EnhancedChatbotPro:
         frame = ttk.Frame(dialog, style='Card.TFrame', padding=25)
         frame.pack(fill='both', expand=True)
         
-        ttk.Label(frame, text="⭐ Create Permanent Account", 
+        ttk.Label(frame, text="â­ Create Permanent Account", 
                  style='Title.TLabel').pack(pady=(0, 10))
         
         ttk.Label(frame, text="Keep your data permanently by creating an account.",
@@ -3301,24 +3586,24 @@ class EnhancedChatbotPro:
             email = email_entry.get().strip()
             
             if not username or not password:
-                messagebox.showwarning("⚠️ Input Required", 
+                messagebox.showwarning("âš ï¸ Input Required", 
                                      "Please enter username and password!")
                 return
             
             if len(password) < 6:
-                messagebox.showwarning("⚠️ Weak Password", 
+                messagebox.showwarning("âš ï¸ Weak Password", 
                                      "Password must be at least 6 characters!")
                 return
             
             if password != confirm:
-                messagebox.showwarning("⚠️ Password Mismatch", 
+                messagebox.showwarning("âš ï¸ Password Mismatch", 
                                      "Passwords don't match!")
                 return
             
             # Create new account
             success, message = self.auth.register_user(username, password, email, is_guest=False)
             if not success:
-                messagebox.showerror("❌ Registration Failed", message)
+                messagebox.showerror("âŒ Registration Failed", message)
                 return
             
             # Get current user ID and data
@@ -3327,17 +3612,17 @@ class EnhancedChatbotPro:
             # Login to new account
             login_success, login_message = self.auth.login_user(username, password)
             if not login_success:
-                messagebox.showerror("❌ Login Failed", login_message)
+                messagebox.showerror("âŒ Login Failed", login_message)
                 return
             
             # Transfer data from guest to new account
             self.transfer_guest_data(old_user_id, self.auth.current_user['id'])
             
             dialog.destroy()
-            messagebox.showinfo("✅ Success!", 
-                              "🎉 Account created successfully!\n\n"
-                              "✨ All your guest data has been transferred.\n"
-                              "🔒 You're now using a permanent account.")
+            messagebox.showinfo("âœ… Success!", 
+                              "ðŸŽ‰ Account created successfully!\n\n"
+                              "âœ¨ All your guest data has been transferred.\n"
+                              "ðŸ”’ You're now using a permanent account.")
             
             # Refresh UI to show registered user status
             self.setup_ui()
@@ -3383,78 +3668,78 @@ class EnhancedChatbotPro:
             self.update_status()
             
         except Exception as e:
-            messagebox.showerror("❌ Transfer Failed", f"Failed to transfer data: {e}")
+            messagebox.showerror("âŒ Transfer Failed", f"Failed to transfer data: {e}")
     
     def show_guest_info(self):
         """Show guest information"""
         info = """
-👥 **GUEST ACCOUNT INFORMATION**
+ðŸ‘¥ **GUEST ACCOUNT INFORMATION**
 
-🎉 **You're currently using a guest account.**
+ðŸŽ‰ **You're currently using a guest account.**
 
-✅ **What you get:**
-• Full access to all premium features
-• AI backend configuration (OpenAI/Claude)
-• File uploads and attachments
-• PDF and Markdown export
-• Local data storage
+âœ… **What you get:**
+â€¢ Full access to all premium features
+â€¢ AI backend configuration (OpenAI/Claude)
+â€¢ File uploads and attachments
+â€¢ PDF and Markdown export
+â€¢ Local data storage
 
-⚠️ **Important notes:**
-• Guest data may be cleaned up after 24 hours of inactivity
-• For permanent storage, create an account
-• You can upgrade anytime from File menu
+âš ï¸ **Important notes:**
+â€¢ Guest data may be cleaned up after 24 hours of inactivity
+â€¢ For permanent storage, create an account
+â€¢ You can upgrade anytime from File menu
 
-💡 **Tips:**
-• Export important data regularly
-• Use the upgrade feature to keep your data
-• Guest accounts are perfect for trying out features
+ðŸ’¡ **Tips:**
+â€¢ Export important data regularly
+â€¢ Use the upgrade feature to keep your data
+â€¢ Guest accounts are perfect for trying out features
 
-✨ **To upgrade:** File → ⭐ Create Permanent Account
+âœ¨ **To upgrade:** File â†’ â­ Create Permanent Account
         """
         
-        messagebox.showinfo("👥 Guest Account Info", info)
+        messagebox.showinfo("ðŸ‘¥ Guest Account Info", info)
     
     def show_about(self):
         """Show about dialog"""
         version = "2.1"
         is_guest = self.auth.current_user.get('is_guest', False)
-        user_type = "👥 Guest" if is_guest else "👤 Registered User"
+        user_type = "ðŸ‘¥ Guest" if is_guest else "ðŸ‘¤ Registered User"
         
         about_text = f"""
-🤖 **AI Project Assistant Pro**
+ðŸ¤– **AI Project Assistant Pro**
 **Version {version}**
 
-👤 **User:** {self.auth.current_user['username']}
-🎯 **Status:** {user_type}
+ðŸ‘¤ **User:** {self.auth.current_user['username']}
+ðŸŽ¯ **Status:** {user_type}
 
-🌟 **Premium Features:**
-• AI Backend Integration (OpenAI/Claude)
-• User Authentication System
-• Guest Access Mode
-• File Attachments Management
-• PDF & Markdown Export
-• Advanced Analytics Dashboard
+ðŸŒŸ **Premium Features:**
+â€¢ AI Backend Integration (OpenAI/Claude)
+â€¢ User Authentication System
+â€¢ Guest Access Mode
+â€¢ File Attachments Management
+â€¢ PDF & Markdown Export
+â€¢ Advanced Analytics Dashboard
 
-🛠️ **Built with:** Python, Tkinter, SQLite
+ðŸ› ï¸ **Built with:** Python, Tkinter, SQLite
 
-📧 **Support:** GitHub Issues
-🔗 **GitHub:** https://github.com/Khan-Feroz211/AI-CHATBOT
+ðŸ“§ **Support:** GitHub Issues
+ðŸ”— **GitHub:** https://github.com/Khan-Feroz211/AI-CHATBOT
         """
         
-        messagebox.showinfo("ℹ️ About", about_text)
+        messagebox.showinfo("â„¹ï¸ About", about_text)
     
     def open_github(self):
         """Open GitHub repository"""
         try:
             webbrowser.open("https://github.com/Khan-Feroz211/AI-CHATBOT")
         except:
-            messagebox.showinfo("🌐 GitHub", 
+            messagebox.showinfo("ðŸŒ GitHub", 
                               "GitHub Repository:\n"
                               "https://github.com/Khan-Feroz211/AI-CHATBOT")
     
     def report_issue(self):
         """Report an issue"""
-        messagebox.showinfo("📧 Report Issue", 
+        messagebox.showinfo("ðŸ“§ Report Issue", 
                           "To report an issue or suggest improvements:\n\n"
                           "1. Visit the GitHub repository\n"
                           "2. Create a new issue\n"
@@ -3466,48 +3751,48 @@ class EnhancedChatbotPro:
         is_guest = self.auth.current_user.get('is_guest', False)
         
         guide = f"""
-🎯 **QUICK START GUIDE** - Pro Version {'(Guest Mode)' if is_guest else '(Registered)'}
+ðŸŽ¯ **QUICK START GUIDE** - Pro Version {'(Guest Mode)' if is_guest else '(Registered)'}
 
-{'👥 **GUEST MODE FEATURES:**' if is_guest else '👤 **REGISTERED FEATURES:**'}
-• Tasks, Notes, Files, Analytics
-• AI Chat with configurable backend
-• PDF/Markdown Export
-• Data saved {'temporarily (24h)' if is_guest else 'permanently'}
+{'ðŸ‘¥ **GUEST MODE FEATURES:**' if is_guest else 'ðŸ‘¤ **REGISTERED FEATURES:**'}
+â€¢ Tasks, Notes, Files, Analytics
+â€¢ AI Chat with configurable backend
+â€¢ PDF/Markdown Export
+â€¢ Data saved {'temporarily (24h)' if is_guest else 'permanently'}
 
-📋 **1. TASK MANAGEMENT**
-   • Add tasks in Tasks tab or via chat
-   • Set priority (High/Medium/Low)
-   • Mark as complete
-   • Filter and organize tasks
+ðŸ“‹ **1. TASK MANAGEMENT**
+   â€¢ Add tasks in Tasks tab or via chat
+   â€¢ Set priority (High/Medium/Low)
+   â€¢ Mark as complete
+   â€¢ Filter and organize tasks
 
-📝 **2. NOTES & FILES**
-   • Create notes with tags
-   • Upload files for reference
-   • Search and organize content
+ðŸ“ **2. NOTES & FILES**
+   â€¢ Create notes with tags
+   â€¢ Upload files for reference
+   â€¢ Search and organize content
 
-🤖 **3. AI ASSISTANT**
-   • Chat naturally with the AI
-   • Ask for help or suggestions
-   • Configure AI backend in settings
+ðŸ¤– **3. AI ASSISTANT**
+   â€¢ Chat naturally with the AI
+   â€¢ Ask for help or suggestions
+   â€¢ Configure AI backend in settings
 
-📊 **4. ANALYTICS & EXPORT**
-   • Track your productivity
-   • Export data to PDF/Markdown
-   • View detailed statistics
+ðŸ“Š **4. ANALYTICS & EXPORT**
+   â€¢ Track your productivity
+   â€¢ Export data to PDF/Markdown
+   â€¢ View detailed statistics
 
-💡 **TIPS:**
-• Type 'help' in chat for assistance
-• Use filters to focus on important tasks
-• Configure AI for smarter responses
-• Export regularly for backup
-{'• ⭐ Upgrade to save permanently' if is_guest else ''}
+ðŸ’¡ **TIPS:**
+â€¢ Type 'help' in chat for assistance
+â€¢ Use filters to focus on important tasks
+â€¢ Configure AI for smarter responses
+â€¢ Export regularly for backup
+{'â€¢ â­ Upgrade to save permanently' if is_guest else ''}
         """
         
-        messagebox.showinfo("📖 User Guide", guide)
+        messagebox.showinfo("ðŸ“– User Guide", guide)
     
     def cleanup_database(self):
         """Clean up database (remove orphaned records)"""
-        if not messagebox.askyesno("🧹 Cleanup Database", 
+        if not messagebox.askyesno("ðŸ§¹ Cleanup Database", 
                                   "Clean up database?\n\n"
                                   "This will remove orphaned records and optimize performance."):
             return
@@ -3537,10 +3822,10 @@ class EnhancedChatbotPro:
             conn.commit()
             conn.close()
             
-            messagebox.showinfo("✅ Cleanup Complete", 
+            messagebox.showinfo("âœ… Cleanup Complete", 
                               "Database cleaned up successfully!")
         except Exception as e:
-            messagebox.showerror("❌ Cleanup Failed", f"Failed to clean database: {e}")
+            messagebox.showerror("âŒ Cleanup Failed", f"Failed to clean database: {e}")
     
     def refresh_all_data(self):
         """Refresh all data from database"""
@@ -3549,11 +3834,11 @@ class EnhancedChatbotPro:
         self.refresh_notes_list()
         self.refresh_files_list()
         self.update_status()
-        messagebox.showinfo("🔄 Refresh Complete", "All data refreshed from database!")
+        messagebox.showinfo("ðŸ”„ Refresh Complete", "All data refreshed from database!")
     
     def clear_chat(self):
         """Clear chat history"""
-        if messagebox.askyesno("🗑️ Clear Chat", 
+        if messagebox.askyesno("ðŸ—‘ï¸ Clear Chat", 
                               "Clear all chat messages?\n\n"
                               "This action cannot be undone."):
             self.chat_display.config(state='normal')
@@ -3561,11 +3846,11 @@ class EnhancedChatbotPro:
             self.chat_display.config(state='disabled')
             self.conversation_history = []
             
-            self.add_message("system", "💬 Chat cleared.")
+            self.add_message("system", "ðŸ’¬ Chat cleared.")
     
     def logout(self):
         """Logout user"""
-        if messagebox.askyesno("🚪 Logout", 
+        if messagebox.askyesno("ðŸšª Logout", 
                               "Are you sure you want to logout?"):
             was_guest = self.auth.logout_user()
             
@@ -3596,7 +3881,7 @@ class EnhancedChatbotPro:
     
     def on_closing(self):
         """Handle window close"""
-        if messagebox.askokcancel("❌ Quit", 
+        if messagebox.askokcancel("âŒ Quit", 
                                  "Are you sure you want to quit?\n\n"
                                  "All data is saved automatically."):
             self.root.destroy()
@@ -3611,3 +3896,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

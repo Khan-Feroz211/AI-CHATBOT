@@ -6,6 +6,8 @@ pydantic-settings>=2.6.0,<3.0.0
 python-dotenv==1.0.0
 numpy>=2.1.0,<3.0.0
 httpx>=0.27.0,<1.0.0
+pyotp==2.9.0
+qrcode[pil]==8.2
 
 # For embeddings (optional - comment out if issues)
 # sentence-transformers==2.2.2
