@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  chatbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatbot-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
+      - SECRET_KEY=${SECRET_KEY}
+      
+      # WhatsApp Configuration
+      - WHATSAPP_ENABLED=${WHATSAPP_ENABLED:-true}
+      - WHATSAPP_SANDBOX_MODE=${WHATSAPP_SANDBOX_MODE:-true}
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN}
+      - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID}
+      - WHATSAPP_BUSINESS_ACCOUNT_ID=${WHATSAPP_BUSINESS_ACCOUNT_ID}
+      - WHATSAPP_MAX_RETRIES=${WHATSAPP_MAX_RETRIES:-3}
+      - WHATSAPP_RETRY_BACKOFF_SECONDS=${WHATSAPP_RETRY_BACKOFF_SECONDS:-1}
+      
+      # Payment Configuration
+      - PAYMENT_SANDBOX_MODE=${PAYMENT_SANDBOX_MODE:-true}
+      - JAZZCASH_MERCHANT_ID=${JAZZCASH_MERCHANT_ID}
+      - JAZZCASH_PASSWORD=${JAZZCASH_PASSWORD}
+      - EASYPAISA_STORE_ID=${EASYPAISA_STORE_ID}
+      - EASYPAISA_HASH_KEY=${EASYPAISA_HASH_KEY}
+      
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # API
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - ./data:/app/data
+      - ./chatbot_data:/app/chatbot_data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - chatbot-network
+
+  chatbot-db:
+    image: postgres:15-alpine
+    container_name: chatbot-db
+    environment:
+      - POSTGRES_USER=${DB_USER:-chatbot}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-chatbot}
+      - POSTGRES_DB=${DB_NAME:-chatbot_prod}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chatbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatbot-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  chatbot-network:
+    driver: bridge

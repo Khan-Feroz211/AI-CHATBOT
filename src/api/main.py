@@ -19,6 +19,7 @@ from src.api.schemas.whatsapp import (
 )
 from src.services.payments import PaymentService
 from src.services.whatsapp import WhatsAppService
+from src.api.routes.nlp import router as nlp_router
 
 app = FastAPI(
     title="AI Chatbot ML",
@@ -41,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include NLP routes
+app.include_router(nlp_router)
 
 
 @app.get("/")
@@ -67,6 +71,8 @@ async def info():
             "ML Predictions",
             "User Authentication",
             "Payments (JazzCash/EasyPaisa/Bank/COD)",
+            "NLP Processing (Sentiment, Intent, Entities, Summarization)",
+            "WhatsApp Integration",
         ],
         "endpoints": [
             "/",
@@ -76,6 +82,12 @@ async def info():
             "/api/v1/payments/webhook",
             "/api/v1/whatsapp/send",
             "/api/v1/whatsapp/webhook",
+            "/api/v1/nlp/sentiment",
+            "/api/v1/nlp/intent",
+            "/api/v1/nlp/entities",
+            "/api/v1/nlp/summarize",
+            "/api/v1/nlp/keywords",
+            "/api/v1/nlp/analyze",
             "/docs",
         ],
     }
