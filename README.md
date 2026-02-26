@@ -68,6 +68,15 @@ Environment required in `.env`: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOK
 
 Health check: `curl http://localhost:5000/healthz` (also wired into docker-compose healthcheck).
 
+## WhatsApp Bot (Windows, no make)
+
+```powershell
+.\scripts\run_whatsapp_bot.ps1          # starts Flask on :5000
+.\scripts\tunnel_whatsapp.ps1           # starts ngrok if installed
+curl http://localhost:5000/healthz      # verify running
+# set Meta webhook to https://<ngrok-id>.ngrok-free.dev/webhook with your verify token
+```
+
 Cost estimate (Pakistan): `python scripts/pricing_calculator.py --marketing 500 --utility 3000 --authentication 100`
 
 ## Features
