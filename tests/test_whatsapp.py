@@ -20,7 +20,9 @@ def test_whatsapp_send_sandbox(monkeypatch):
 
 
 def test_whatsapp_webhook_challenge(monkeypatch):
-    monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_VERIFY_TOKEN", "verify-123")
+    monkeypatch.setattr(
+        "src.services.whatsapp.settings.WHATSAPP_VERIFY_TOKEN", "verify-123"
+    )
     service = WhatsAppService()
 
     ok = service.verify_webhook_challenge("subscribe", "verify-123", "challenge-value")
@@ -32,7 +34,9 @@ def test_whatsapp_webhook_challenge(monkeypatch):
 
 def test_whatsapp_signature_verification_live(monkeypatch):
     monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_SANDBOX_MODE", False)
-    monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_APP_SECRET", "super-secret")
+    monkeypatch.setattr(
+        "src.services.whatsapp.settings.WHATSAPP_APP_SECRET", "super-secret"
+    )
 
     body = b'{"entry":[{"changes":[]}]}'
     digest = hmac.new(b"super-secret", body, hashlib.sha256).hexdigest()
@@ -61,9 +65,13 @@ def test_whatsapp_send_live_retry_success(monkeypatch):
     monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_ENABLED", True)
     monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_SANDBOX_MODE", False)
     monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_ACCESS_TOKEN", "token")
-    monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_PHONE_NUMBER_ID", "123456")
+    monkeypatch.setattr(
+        "src.services.whatsapp.settings.WHATSAPP_PHONE_NUMBER_ID", "123456"
+    )
     monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_MAX_RETRIES", 2)
-    monkeypatch.setattr("src.services.whatsapp.settings.WHATSAPP_RETRY_BACKOFF_SECONDS", 0.0)
+    monkeypatch.setattr(
+        "src.services.whatsapp.settings.WHATSAPP_RETRY_BACKOFF_SECONDS", 0.0
+    )
 
     calls = {"count": 0}
 

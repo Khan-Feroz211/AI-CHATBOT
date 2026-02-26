@@ -1,9 +1,10 @@
-import hmac
 import hashlib
+import hmac
 import importlib
-import os
 import json
+import os
 import types
+
 import pytest
 
 
@@ -54,7 +55,11 @@ def test_inbound_happy_path(app, monkeypatch):
                     {
                         "value": {
                             "messages": [
-                                {"id": "m1", "from": "111", "text": {"body": "book meeting"}}
+                                {
+                                    "id": "m1",
+                                    "from": "111",
+                                    "text": {"body": "book meeting"},
+                                }
                             ]
                         }
                     }
@@ -66,7 +71,10 @@ def test_inbound_happy_path(app, monkeypatch):
     res = client.post(
         "/webhook",
         data=body,
-        headers={"X-Hub-Signature-256": sign(body, "secret"), "Content-Type": "application/json"},
+        headers={
+            "X-Hub-Signature-256": sign(body, "secret"),
+            "Content-Type": "application/json",
+        },
     )
     assert res.status_code == 200
     assert sent["payload"]["text"]["body"].startswith("Share date/time")
@@ -89,7 +97,11 @@ def test_inbound_unknown_message(app, monkeypatch):
                     {
                         "value": {
                             "messages": [
-                                {"id": "m2", "from": "111", "text": {"body": "hello there"}}
+                                {
+                                    "id": "m2",
+                                    "from": "111",
+                                    "text": {"body": "hello there"},
+                                }
                             ]
                         }
                     }
@@ -101,7 +113,10 @@ def test_inbound_unknown_message(app, monkeypatch):
     res = client.post(
         "/webhook",
         data=body,
-        headers={"X-Hub-Signature-256": sign(body, "secret"), "Content-Type": "application/json"},
+        headers={
+            "X-Hub-Signature-256": sign(body, "secret"),
+            "Content-Type": "application/json",
+        },
     )
     assert res.status_code == 200
     assert "bookings" in sent["payload"]["text"]["body"]
@@ -114,6 +129,9 @@ def test_signature_invalid(app):
     res = client.post(
         "/webhook",
         data=body,
-        headers={"X-Hub-Signature-256": "sha256=deadbeef", "Content-Type": "application/json"},
+        headers={
+            "X-Hub-Signature-256": "sha256=deadbeef",
+            "Content-Type": "application/json",
+        },
     )
     assert res.status_code == 403

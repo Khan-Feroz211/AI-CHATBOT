@@ -20,7 +20,9 @@ class WhatsAppService:
         self.enabled = settings.WHATSAPP_ENABLED
         self.sandbox = settings.WHATSAPP_SANDBOX_MODE
 
-    def build_outbound_message(self, request: WhatsAppSendRequest) -> WhatsAppSendResponse:
+    def build_outbound_message(
+        self, request: WhatsAppSendRequest
+    ) -> WhatsAppSendResponse:
         if not self.enabled:
             return WhatsAppSendResponse(
                 success=False,
@@ -78,7 +80,9 @@ class WhatsAppService:
             "Content-Type": "application/json",
         }
 
-        send_result = self._send_with_retries(endpoint=endpoint, headers=headers, payload=payload)
+        send_result = self._send_with_retries(
+            endpoint=endpoint, headers=headers, payload=payload
+        )
         if not send_result["success"]:
             logger.error(
                 "WhatsApp send failed after retries for phone=%s message_id=%s reason=%s",
@@ -118,7 +122,10 @@ class WhatsAppService:
         )
 
     def verify_webhook_challenge(
-        self, hub_mode: Optional[str], hub_verify_token: Optional[str], hub_challenge: Optional[str]
+        self,
+        hub_mode: Optional[str],
+        hub_verify_token: Optional[str],
+        hub_challenge: Optional[str],
     ) -> Optional[str]:
         if hub_mode != "subscribe":
             return None
@@ -130,7 +137,9 @@ class WhatsAppService:
             return None
         return hub_challenge
 
-    def verify_webhook_signature(self, body: bytes, signature_header: Optional[str]) -> bool:
+    def verify_webhook_signature(
+        self, body: bytes, signature_header: Optional[str]
+    ) -> bool:
         if self.sandbox:
             return True
         if not settings.WHATSAPP_APP_SECRET:
@@ -146,7 +155,9 @@ class WhatsAppService:
         actual_hash = signature_header.split("sha256=", 1)[1]
         return hmac.compare_digest(expected_hash, actual_hash)
 
-    def _send_with_retries(self, endpoint: str, headers: Dict[str, str], payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _send_with_retries(
+        self, endpoint: str, headers: Dict[str, str], payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
         attempts = max(1, settings.WHATSAPP_MAX_RETRIES + 1)
         backoff = max(0.0, settings.WHATSAPP_RETRY_BACKOFF_SECONDS)
         timeout = max(5, settings.WHATSAPP_TIMEOUT_SECONDS)
@@ -175,13 +186,21 @@ class WhatsAppService:
                         "attempts": attempt,
                     }
 
-                error_text = response.text[:240] if response.text else f"http_{response.status_code}"
+                error_text = (
+                    response.text[:240]
+                    if response.text
+                    else f"http_{response.status_code}"
+                )
                 last_error = f"http_{response.status_code}:{error_text}"
-                logger.warning("WhatsApp send attempt=%s failed: %s", attempt, last_error)
+                logger.warning(
+                    "WhatsApp send attempt=%s failed: %s", attempt, last_error
+                )
 
             except httpx.HTTPError as exc:
                 last_error = f"http_error:{exc.__class__.__name__}"
-                logger.warning("WhatsApp send attempt=%s raised %s", attempt, last_error)
+                logger.warning(
+                    "WhatsApp send attempt=%s raised %s", attempt, last_error
+                )
 
             if attempt < attempts and backoff > 0:
                 time.sleep(backoff * attempt)
@@ -189,7 +208,9 @@ class WhatsAppService:
         return {"success": False, "error": last_error, "attempts": attempts}
 
     @staticmethod
-    def _post_meta_message(endpoint: str, headers: Dict[str, str], payload: Dict[str, Any], timeout: int) -> httpx.Response:
+    def _post_meta_message(
+        endpoint: str, headers: Dict[str, str], payload: Dict[str, Any], timeout: int
+    ) -> httpx.Response:
         with httpx.Client(timeout=timeout) as client:
             return client.post(endpoint, headers=headers, json=payload)
 

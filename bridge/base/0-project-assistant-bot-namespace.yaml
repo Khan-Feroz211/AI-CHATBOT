@@ -1,0 +1,8 @@
+#! 0-project-assistant-bot-namespace.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: Namespace
+metadata:
+    name: project-assistant-bot
+    labels:
+        com.docker.compose.project: project-assistant-bot

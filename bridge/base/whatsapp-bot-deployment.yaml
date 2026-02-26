@@ -1,0 +1,80 @@
+#! whatsapp-bot-deployment.yaml
+# Generated code, do not edit
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: whatsapp-bot
+    namespace: project-assistant-bot
+    labels:
+        com.docker.compose.project: project-assistant-bot
+        com.docker.compose.service: whatsapp-bot
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            com.docker.compose.project: project-assistant-bot
+            com.docker.compose.service: whatsapp-bot
+    strategy:
+        type: Recreate
+    template:
+        metadata:
+            labels:
+                com.docker.compose.project: project-assistant-bot
+                com.docker.compose.service: whatsapp-bot
+                com.docker.compose.network.default: "true"
+        spec:
+            restartPolicy: unless-stopped
+            containers:
+                - name: whatsapp-bot
+                  image: project-assistant-bot-whatsapp-bot
+                  imagePullPolicy: IfNotPresent
+                  env:
+                    - name: API_HOST
+                      value: "0.0.0.0"
+                    - name: API_PORT
+                      value: "8000"
+                    - name: APP_NAME
+                      value: "AI Chatbot ML"
+                    - name: APP_VERSION
+                      value: "3.0.0"
+                    - name: COLAB_API_KEY
+                      value: ""
+                    - name: COLAB_API_URL
+                      value: ""
+                    - name: COLAB_ENABLED
+                      value: "false"
+                    - name: DATABASE_URL
+                      value: "sqlite:///./chatbot_data/chatbot.db"
+                    - name: DEBUG
+                      value: "true"
+                    - name: ENVIRONMENT
+                      value: "development"
+                    - name: PORT
+                      value: "5000"
+                    - name: SECRET_KEY
+                      value: "your-secret-key-here-change-this"
+                    - name: WHATSAPP_ACCESS_TOKEN
+                      value: "REPLACE_WITH_META_ACCESS_TOKEN"
+                    - name: WHATSAPP_APP_SECRET
+                      value: "9-BrsPwAuEJT3cZ8bCjGJyNniU7xZO7QA-gCRhlwmTT5LXbKlqWRN3tEagaygMSf"
+                    - name: WHATSAPP_ENABLED
+                      value: "true"
+                    - name: WHATSAPP_PHONE_NUMBER_ID
+                      value: "REPLACE_WITH_PHONE_NUMBER_ID"
+                    - name: WHATSAPP_SANDBOX_MODE
+                      value: "false"
+                    - name: WHATSAPP_VERIFY_TOKEN
+                      value: "F5qq3VerQRSFJAykaKfAjsVqXyFom6YrEEeCyWW3h4A"
+                  livenessProbe:
+                    exec:
+                        command:
+                            - /bin/sh
+                            - -c
+                            - curl --fail http://localhost:5000/healthz || exit 1
+                    periodSeconds: 30
+                    initialDelaySeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 3
+                  ports:
+                    - name: whatsapp-b-5000
+                      containerPort: 5000

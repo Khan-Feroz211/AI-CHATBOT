@@ -1,5 +1,6 @@
-from src.core.security import hash_password, verify_password, is_legacy_sha256_hash
 import hashlib
+
+from src.core.security import hash_password, is_legacy_sha256_hash, verify_password
 
 
 def test_hash_password_generates_pbkdf2_format():

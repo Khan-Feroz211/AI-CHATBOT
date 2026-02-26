@@ -1,0 +1,30 @@
+# Development & Testing Dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# Code Formatting & Linting
+black==24.1.1
+isort==5.13.2
+flake8==7.0.0
+pylint==3.0.3
+mypy==1.8.0
+autopep8==2.0.4
+
+# Testing & Coverage
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+coverage==7.4.1
+
+# Development utilities
+ipython==8.20.0
+ipdb==0.13.13
+pytest-flask==1.3.0
+factory-boy==3.3.0
+
+# Documentation
+sphinx==7.2.6
+sphinx-rtd-theme==2.0.0
+
+# Code security checking
+bandit==1.7.5
+safety==2.3.5

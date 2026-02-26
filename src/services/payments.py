@@ -46,7 +46,9 @@ class PaymentService:
             message=f"Webhook accepted for {request.provider.value} ({request.reference_id})",
         )
 
-    def _create_jazzcash_payment(self, request: PaymentCreateRequest) -> PaymentCreateResponse:
+    def _create_jazzcash_payment(
+        self, request: PaymentCreateRequest
+    ) -> PaymentCreateResponse:
         reference = self._build_reference("JC", request.order_id)
         if self.sandbox:
             return PaymentCreateResponse(
@@ -84,7 +86,9 @@ class PaymentService:
             meta={"sandbox": False, "merchant_id": settings.JAZZCASH_MERCHANT_ID},
         )
 
-    def _create_easypaisa_payment(self, request: PaymentCreateRequest) -> PaymentCreateResponse:
+    def _create_easypaisa_payment(
+        self, request: PaymentCreateRequest
+    ) -> PaymentCreateResponse:
         reference = self._build_reference("EP", request.order_id)
         if self.sandbox:
             return PaymentCreateResponse(
@@ -122,7 +126,9 @@ class PaymentService:
             meta={"sandbox": False, "store_id": settings.EASYPAISA_STORE_ID},
         )
 
-    def _create_bank_transfer_payment(self, request: PaymentCreateRequest) -> PaymentCreateResponse:
+    def _create_bank_transfer_payment(
+        self, request: PaymentCreateRequest
+    ) -> PaymentCreateResponse:
         reference = self._build_reference("BT", request.order_id)
         bank_name = settings.BANK_TRANSFER_BANK_NAME or "Your Bank"
         account_title = settings.BANK_TRANSFER_ACCOUNT_TITLE or "Your Business Account"
@@ -139,7 +145,9 @@ class PaymentService:
             message="Bank transfer instructions generated",
         )
 
-    def _create_cod_payment(self, request: PaymentCreateRequest) -> PaymentCreateResponse:
+    def _create_cod_payment(
+        self, request: PaymentCreateRequest
+    ) -> PaymentCreateResponse:
         reference = self._build_reference("COD", request.order_id)
         return PaymentCreateResponse(
             success=True,
@@ -162,7 +170,11 @@ class PaymentService:
         if not secret or not request.signature:
             return False
 
-        payload = f"{request.reference_id}|{request.status}|{request.amount_pkr or 0}".encode("utf-8")
+        payload = (
+            f"{request.reference_id}|{request.status}|{request.amount_pkr or 0}".encode(
+                "utf-8"
+            )
+        )
         expected = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, request.signature)
 

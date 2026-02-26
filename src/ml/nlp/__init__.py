@@ -1,10 +1,10 @@
 """NLP Processing Module"""
 from .processor import (
     CPUFriendlyNLPProcessor,
-    SentimentResult,
-    IntentResult,
     EntityResult,
-    SummaryResult
+    IntentResult,
+    SentimentResult,
+    SummaryResult,
 )
 
 __all__ = [
@@ -12,5 +12,5 @@ __all__ = [
     "SentimentResult",
     "IntentResult",
     "EntityResult",
-    "SummaryResult"
+    "SummaryResult",
 ]

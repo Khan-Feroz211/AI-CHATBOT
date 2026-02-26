@@ -3,7 +3,7 @@ import hmac
 import logging
 import os
 import time
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 from typing import Any, Dict, Optional
 
 import requests
@@ -47,7 +47,9 @@ if REDIS_URL and redis is not None:
         redis_client = None
 
 
-def _post_with_retry(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> requests.Response:
+def _post_with_retry(
+    url: str, headers: Dict[str, str], payload: Dict[str, Any]
+) -> requests.Response:
     """POST with exponential backoff."""
     last_exc = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -79,7 +81,9 @@ def send_text(to: str, body: str) -> None:
     }
     resp = _post_with_retry(f"{API_ROOT}/messages", headers, payload)
     if resp.status_code >= 300:
-        logger.error("send_text_failed", extra={"status": resp.status_code, "body": resp.text})
+        logger.error(
+            "send_text_failed", extra={"status": resp.status_code, "body": resp.text}
+        )
 
 
 def _valid_signature(raw_body: bytes, header_sig: str) -> bool:
@@ -87,7 +91,9 @@ def _valid_signature(raw_body: bytes, header_sig: str) -> bool:
         return False
     expected = (
         "sha256="
-        + hmac.new(APP_SECRET.encode(), msg=raw_body, digestmod=hashlib.sha256).hexdigest()
+        + hmac.new(
+            APP_SECRET.encode(), msg=raw_body, digestmod=hashlib.sha256
+        ).hexdigest()
     )
     return hmac.compare_digest(expected, header_sig)
 
@@ -161,9 +167,15 @@ def inbound():
                     continue
 
                 if text.startswith("book"):
-                    send_text(sender, "Share date/time + meeting title; I’ll book and confirm.")
+                    send_text(
+                        sender,
+                        "Share date/time + meeting title; I’ll book and confirm.",
+                    )
                 elif text.startswith("sponsor"):
-                    send_text(sender, "Send sponsor budget, timeline, and contact email; I’ll log and confirm.")
+                    send_text(
+                        sender,
+                        "Send sponsor budget, timeline, and contact email; I’ll log and confirm.",
+                    )
                 else:
                     send_text(
                         sender,

@@ -11,23 +11,90 @@ desktop/chatbot_data/
 uploads/
 files/
 
-# Python cache
+# Python cache & virtual environments
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.venv/
+.venv311/
+.venv311_clean/
 venv/
 env/
+ENV/
+build/
+dist/
+*.egg-info/
 
 # IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# Environment variables
+# Environment variables & secrets
 .env
+.env.local
+.env.*.local
+*.key
+*.pem
 
-# Backup files
+# Backup & archive files
 *.backup
 *.bak
+*.old
+*.orig
+*.tmp
+
+# Logs and temporary files
+logs/
+*.log
+temp/
+tmp/
+
+# QR codes and auto-generated assets
+qr_codes/
+*.png
+
+# Legacy and old folders
+/legacy
+/legacy_archive
+/demo_mfa_setup
+
+# Old requirements files (cleaned up)
+requirements-docker.txt
+requirements-simple.txt
+requirements-minimal.txt
+
+*.bak
+legacy_archive/
+
+# Build outputs
+htmlcov/
+.coverage
+coverage.xml
+
+# Logs
+*.log
+logs/
+data/logs/
+# Additional generated artifacts
+runtime.txt
+READY_TO_LAUNCH.md
+
+test_report.txt
+test_results.txt
+
+# Local deployment verification outputs
+*.pid
+*.seed
+
+# Docker override files
+docker-compose.override.yml

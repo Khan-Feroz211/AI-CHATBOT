@@ -19,7 +19,9 @@ def hash_password(password: str, iterations: int = PBKDF2_ITERATIONS) -> str:
     if not isinstance(password, str) or not password:
         raise ValueError("password must be a non-empty string")
     salt = os.urandom(16).hex()
-    derived = hashlib.pbkdf2_hmac(PBKDF2_ALGO, password.encode("utf-8"), bytes.fromhex(salt), iterations)
+    derived = hashlib.pbkdf2_hmac(
+        PBKDF2_ALGO, password.encode("utf-8"), bytes.fromhex(salt), iterations
+    )
     return f"{PBKDF2_PREFIX}${iterations}${salt}${derived.hex()}"
 
 
@@ -47,7 +49,9 @@ def verify_password(password: str, stored_hash: str) -> bool:
         except ValueError:
             return False
 
-        actual = hashlib.pbkdf2_hmac(PBKDF2_ALGO, password.encode("utf-8"), salt, iterations)
+        actual = hashlib.pbkdf2_hmac(
+            PBKDF2_ALGO, password.encode("utf-8"), salt, iterations
+        )
         return hmac.compare_digest(actual, expected)
 
     if is_legacy_sha256_hash(stored_hash):

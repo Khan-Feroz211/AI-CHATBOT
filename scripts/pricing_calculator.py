@@ -9,10 +9,10 @@ from dataclasses import dataclass
 # Reference rates (adjust when Meta updates pricing)
 # Values are per conversation/message depending on Meta category rules.
 PAKISTAN_RATES_PKR = {
-    "marketing": 0.882,       # PKR per conversation
-    "utility": 0.160,         # PKR per conversation
+    "marketing": 0.882,  # PKR per conversation
+    "utility": 0.160,  # PKR per conversation
     "authentication": 0.129,  # PKR per conversation
-    "service": 0.0,           # Customer-initiated service window (often zero-rated)
+    "service": 0.0,  # Customer-initiated service window (often zero-rated)
 }
 
 
@@ -36,11 +36,27 @@ class Estimate:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="WhatsApp pricing estimator (Pakistan rates).")
-    parser.add_argument("--marketing", type=int, default=0, help="Marketing conversations per month")
-    parser.add_argument("--utility", type=int, default=0, help="Utility conversations per month")
-    parser.add_argument("--authentication", type=int, default=0, help="Authentication conversations per month")
-    parser.add_argument("--service", type=int, default=0, help="Customer-initiated service conversations per month")
+    parser = argparse.ArgumentParser(
+        description="WhatsApp pricing estimator (Pakistan rates)."
+    )
+    parser.add_argument(
+        "--marketing", type=int, default=0, help="Marketing conversations per month"
+    )
+    parser.add_argument(
+        "--utility", type=int, default=0, help="Utility conversations per month"
+    )
+    parser.add_argument(
+        "--authentication",
+        type=int,
+        default=0,
+        help="Authentication conversations per month",
+    )
+    parser.add_argument(
+        "--service",
+        type=int,
+        default=0,
+        help="Customer-initiated service conversations per month",
+    )
 
     args = parser.parse_args()
     est = Estimate(
@@ -52,10 +68,18 @@ def main():
     total = est.monthly_cost_pkr()
 
     print("=== WhatsApp Cloud API Cost Estimate (Pakistan, PKR) ===")
-    print(f"Marketing:       {args.marketing}  @ PKR {PAKISTAN_RATES_PKR['marketing']} each")
-    print(f"Utility:         {args.utility}    @ PKR {PAKISTAN_RATES_PKR['utility']} each")
-    print(f"Authentication:  {args.authentication}  @ PKR {PAKISTAN_RATES_PKR['authentication']} each")
-    print(f"Service:         {args.service}    @ PKR {PAKISTAN_RATES_PKR['service']} each")
+    print(
+        f"Marketing:       {args.marketing}  @ PKR {PAKISTAN_RATES_PKR['marketing']} each"
+    )
+    print(
+        f"Utility:         {args.utility}    @ PKR {PAKISTAN_RATES_PKR['utility']} each"
+    )
+    print(
+        f"Authentication:  {args.authentication}  @ PKR {PAKISTAN_RATES_PKR['authentication']} each"
+    )
+    print(
+        f"Service:         {args.service}    @ PKR {PAKISTAN_RATES_PKR['service']} each"
+    )
     print("---------------------------------------------")
     print(f"Estimated monthly total: PKR {total}")
 

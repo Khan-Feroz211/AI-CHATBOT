@@ -1,52 +1,67 @@
-# Core dependencies
-reportlab==4.0.7
-openai==1.51.0
-anthropic==0.36.1
-python-dotenv==1.0.0
-# FastAPI and Web Framework
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-pydantic==2.7.0
-pydantic-settings==2.2.0
+# Core Flask and Web Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+flask-cors==4.0.0
 
 # Database
-sqlalchemy==2.0.36
+SQLAlchemy==2.0.23
+sqlalchemy-utils==0.42.1
+Flask-SQLAlchemy==3.1.1
 psycopg2-binary==2.9.9
-alembic==1.13.1
-
-# NLP & ML (CPU-friendly)
-transformers==4.40.2
-torch==2.3.1
-torchvision==0.18.1
-torchaudio==2.3.1
-scikit-learn==1.4.2
-nltk==3.8.1
-numpy==1.26.4
-scipy==1.12.0
-
-# Embeddings
-sentence-transformers==2.2.2
-
-# Caching & Performance
-redis==5.0.1
-aioredis==2.0.1
 
 # WhatsApp Integration
+twilio==8.10.0  # Optional - use if choosing Twilio provider
 requests==2.31.0
 
-# Security
-python-jose[cryptography]==3.3.0
+# OTP and Authentication
+pyotp==2.9.0
+python-dotenv==1.0.0
 passlib[bcrypt]==1.7.4
 cryptography==41.0.7
-pyotp==2.9.0
-qrcode[pil]==8.2
+qrcode[pil]==7.4.2    # QR code generation with PIL support
+Pillow>=10.1.0        # Image processing for QR codes (updated for Python 3.13 support)
+python-jose[cryptography]==3.3.0  # JWT token generation/verification
 
-# API Documentation
-python-multipart==0.0.6
+# Utilities
+python-dateutil==2.8.2
 
-# Async Support
-anyio==4.12.1
-httpx==0.25.2
+# Caching (optional)
+redis==5.0.1
+
+# JSON validation
+jsonschema==4.20.0
+
+# Logging
+python-json-logger==2.0.7
+
+# Configuration
+python-decouple==3.8
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code Quality
+black==23.12.0
+flake8==6.1.0
+pylint==3.0.3
+isort==5.13.2
+
+# Type checking
+mypy==1.7.1
+
+# Production Server
+gunicorn==21.2.0
+
+# Data validation
+pydantic==2.5.2
+
+# NLP & AI (optional for future enhancements)
+openai==1.51.0
+anthropic==0.36.1
+transformers==4.40.2
+torch==2.3.1
 
 # Monitoring & Logging
 python-json-logger==2.0.7

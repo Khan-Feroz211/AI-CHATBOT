@@ -1,0 +1,1 @@
+"""Stock/Inventory management module."""
