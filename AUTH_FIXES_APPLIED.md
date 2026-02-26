@@ -139,7 +139,7 @@ files              - File uploads metadata
 
 ### 1. **First Run:**
 ```bash
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 ```
 - App starts with login dialog
 - Choose guest or register
@@ -188,7 +188,7 @@ python enhanced_chatbot_pro.py
 
 ## 📝 Files Modified
 
-1. `enhanced_chatbot_pro.py` - Main application file (Fixed)
+1. `MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)` - Main application file (Fixed)
 2. `src/core/security.py` - Password hashing (No changes needed)
 3. `config/settings.py` - Configuration (No changes needed)
 

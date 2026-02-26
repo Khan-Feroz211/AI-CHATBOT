@@ -1,0 +1,18 @@
+{
+  "whatsapp_api": {
+    "provider": "Meta/WhatsApp Cloud API",
+    "endpoints": {
+      "send_message": "https://graph.instagram.com/v18.0/{phone-number-id}/messages",
+      "upload_media": "https://graph.instagram.com/v18.0/{phone-number-id}/media"
+    }
+  },
+  "mfa_workflow": {
+    "step_1": "User sends: 'setup mfa'",
+    "step_2": "Bot sends: QR code image",
+    "step_3": "Bot also sends: Manual secret key",
+    "step_4": "User scans QR or enters key manually",
+    "step_5": "User sends: 6-digit code",
+    "step_6": "Bot sends: Backup recovery codes"
+  },
+  "qr_codes_generated": {}
+}

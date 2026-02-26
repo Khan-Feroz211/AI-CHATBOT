@@ -15,13 +15,11 @@ pip install -r requirements-simple.txt
 # Run database migration (first time only)
 python migrate_database.py
 
-# Start the desktop app
-python enhanced_chatbot_pro.py
-
-# Or run the web version (Pakistan seller profile UI)
-cd web
-python -m http.server 8000
-# Visit: http://localhost:8000
+# Run MFA demo + WhatsApp bot (presentation-ready)
+python MFA_DEMO_SETUP.py            # seed demo accounts + QR codes
+python MFA_VERIFY_SETUP.py          # sanity check TOTP
+make run-whatsapp-bot               # start WhatsApp webhook (env vars required)
+make tunnel                         # expose webhook via ngrok
 ```
 
 ## Windows PowerShell (Path With Spaces)
@@ -59,6 +57,18 @@ docker compose up -d --build
 $env:SECRET_KEY="replace-with-strong-random-value"
 docker compose up -d --build
 ```
+
+## WhatsApp Bot (Docker)
+
+```bash
+docker compose -f docker-compose.whatsapp.yml up --build
+```
+
+Environment required in `.env`: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`.
+
+Health check: `curl http://localhost:5000/healthz` (also wired into docker-compose healthcheck).
+
+Cost estimate (Pakistan): `python scripts/pricing_calculator.py --marketing 500 --utility 3000 --authentication 100`
 
 ## Features
 

@@ -77,7 +77,7 @@ pip install -r requirements-simple.txt
 
 **Step 2:** Run app
 ```bash
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 ```
 
 **Step 3:** Choose auth method
@@ -110,7 +110,7 @@ python diagnose_auth_issues.py
 # Reset database
 rm -rf chatbot_data/
 # Start app - new clean database created automatically
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 ```
 
 ---
@@ -174,7 +174,7 @@ Database (Local only - NO internet exposure)
 
 - [ ] **Start your app** (2 min)
   - Run ngrok: `ngrok http 8000`
-  - Run app: `python enhanced_chatbot_pro.py`
+  - Run app: `python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py`
   - Start API: `python -m uvicorn src.api.main:app --port 8000`
 
 - [ ] **Test WhatsApp** (5 min)
@@ -291,7 +291,7 @@ Database (Local only - NO internet exposure)
 
 ### **Immediate (Right Now - 5 min):**
 1. Read: [LOGIN_AUTH_GUIDE.md](./LOGIN_AUTH_GUIDE.md)
-2. Run: `python enhanced_chatbot_pro.py`
+2. Run: `python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py`
 3. Test: Register or use guest account
 4. Verify: All features work
 
@@ -325,7 +325,7 @@ project-assistant-bot/
 ├── 🔐 WHATSAPP_SECURE_SETUP.md (NEXT)
 ├── 🎯 AUTH_FIXES_APPLIED.md (REFERENCE)
 ├── 🧪 diagnose_auth_issues.py (TESTING TOOL)
-├── enhanced_chatbot_pro.py (MAIN APP)
+├── MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed) (MAIN APP)
 ├── src/
 │   ├── api/main.py (API SERVER)
 │   ├── core/security.py (PASSWORD HASHING)
@@ -373,7 +373,7 @@ When you're ready:
 ngrok http 8000
 
 # Terminal 2: Start your app
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 
 # Terminal 3: Start API server
 python -m uvicorn src.api.main:app --reload --port 8000

@@ -237,7 +237,7 @@ project-assistant-bot/
 ├── desktop/                   # Desktop Application
 │   ├── README.md
 │   ├── requirements.txt
-│   ├── enhanced_chatbot_pro.py  # Current main file
+│   ├── MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)  # Current main file
 │   ├── enhanced_chatbot.py      # Legacy version
 │   │
 │   ├── auth/                  # Authentication module
@@ -293,8 +293,8 @@ project-assistant-bot/
 ## Next Steps
 
 1. **Review the structure** - Check that all files are in correct locations
-2. **Test desktop app** - Verify enhanced_chatbot_pro.py still works
-3. **Extract modules** - Split enhanced_chatbot_pro.py into modules
+2. **Test desktop app** - Verify MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed) still works
+3. **Extract modules** - Split MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed) into modules
 4. **Update imports** - Update all import statements
 5. **Test thoroughly** - Ensure all features work
 6. **Update README** - Document the new structure
@@ -315,7 +315,7 @@ project-assistant-bot/
 ### Run Desktop App
 ``````powershell
 cd desktop
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)
 ``````
 
 ### Run Web Version Locally
@@ -348,7 +348,7 @@ Write-Host ""
 
 Write-Host "📝 Next Steps:" -ForegroundColor Yellow
 Write-Host "  1. Review the new structure in PROJECT_STRUCTURE.md"
-Write-Host "  2. Test desktop app: cd desktop && python enhanced_chatbot_pro.py"
+Write-Host "  2. Test desktop app: cd desktop && python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)"
 Write-Host "  3. Extract code modules (see REORGANIZATION_PLAN.md)"
 Write-Host "  4. Update README.md with new structure"
 Write-Host ""

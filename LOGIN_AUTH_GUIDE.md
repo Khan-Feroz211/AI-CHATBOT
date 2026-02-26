@@ -43,7 +43,7 @@ pip install -r requirements.txt
 ### Step 3: Run the App (1 min)
 
 ```bash
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 ```
 
 **That's it!** The app will:
@@ -218,7 +218,7 @@ rm -f chatbot_data/chatbot.db  # Linux/Mac
 del chatbot_data\chatbot.db    # Windows PowerShell
 
 # Restart app - new clean database will be created automatically
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 ```
 
 ### **Problem 4: Login shows but nothing happens**
@@ -231,7 +231,7 @@ python enhanced_chatbot_pro.py
 # Force restart:
 # 1. Close app (Ctrl+C)
 # 2. Wait 5 seconds
-# 3. Run again: python enhanced_chatbot_pro.py
+# 3. Run again: python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 
 # If still stuck, run diagnostics:
 python diagnose_auth_issues.py
@@ -384,7 +384,7 @@ rm -f chatbot_data/chatbot.db
 **Create test user:**
 ```bash
 # Start app
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 
 # Register:
 # Username: testuser

@@ -235,7 +235,7 @@ ngrok http 8000
 
 # Terminal 2: Start your app
 cd "c:\Users\Feroz Khan\project-assistant-bot"
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 
 # Terminal 3: Start API server
 python -m uvicorn src.api.main:app --reload --port 8000
@@ -308,7 +308,7 @@ User receives message on WhatsApp ✨
 **Every WhatsApp webhook has a signature header:**
 
 ```python
-# In enhanced_chatbot_pro.py (already implemented)
+# In MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed) (already implemented)
 def verify_webhook_signature(raw_body, x_hub_signature_256):
     """Verify WhatsApp webhook is authentic"""
     

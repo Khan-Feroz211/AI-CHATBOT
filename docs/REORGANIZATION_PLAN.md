@@ -5,7 +5,7 @@
 Your project currently has:
 - ✅ Web interface (index.html, css/, js/)
 - ✅ Desktop app (desktop/enhanced_chatbot.py)
-- ✅ Pro version (enhanced_chatbot_pro.py)
+- ✅ Pro version (MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed))
 - ✅ Documentation (docs/)
 - ✅ Legacy code (legacy/)
 - ✅ Data directory (chatbot_data/)
@@ -69,7 +69,7 @@ project-assistant-bot/
 │   │   ├── export_manager.py
 │   │   └── helpers.py
 │   │
-│   └── enhanced_chatbot_pro.py  # Keep for backwards compatibility
+│   └── MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)  # Keep for backwards compatibility
 │
 ├── chatbot_data/                # Shared data directory
 │   ├── chatbot.db
@@ -130,7 +130,7 @@ New-Item -ItemType File -Path ai\__init__.py
 New-Item -ItemType File -Path utils\__init__.py
 ```
 
-#### Step 2: Split enhanced_chatbot_pro.py
+#### Step 2: Split MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)
 
 **Extract to auth/user_auth.py:**
 - UserAuthSystem class (lines 100-300 approx)
@@ -383,7 +383,7 @@ git commit -m "Backup before refactor"
 # 3. Move web files
 .\scripts\move_web_files.ps1
 
-# 4. Split enhanced_chatbot_pro.py (manual)
+# 4. Split MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed) (manual)
 # Use the files I provided earlier
 
 # 5. Cleanup
@@ -408,7 +408,7 @@ git commit -m "Refactor: Organize project structure"
 
 ### Should Do (This Week):
 1. 📁 Create desktop app subdirectories
-2. 🔧 Split enhanced_chatbot_pro.py into modules
+2. 🔧 Split MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed) into modules
 3. 📝 Consolidate documentation
 4. 🧪 Add basic tests
 
@@ -421,13 +421,13 @@ git commit -m "Refactor: Organize project structure"
 ## ⚠️ Important Notes
 
 ### Don't Break Existing Functionality:
-- Keep `enhanced_chatbot_pro.py` as backup
+- Keep `MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)` as backup
 - Create `main.py` as new entry point
 - Both should work during transition
 
 ### Backwards Compatibility:
 ```python
-# In desktop/enhanced_chatbot_pro.py (keep this working)
+# In desktop/MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed) (keep this working)
 # Add at the top:
 print("⚠️ WARNING: This file is deprecated. Use 'python main.py' instead.")
 print("This file will be removed in v3.0")

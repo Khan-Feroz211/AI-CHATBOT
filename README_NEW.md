@@ -66,12 +66,11 @@ pip install -r requirements-simple.txt
 # Run database migration
 python migrate_database.py
 
-# Start desktop app
-python enhanced_chatbot_pro.py
-
-# Or run web version
-cd web
-python -m http.server 8000
+# MFA + WhatsApp demo (presentation workflow)
+python MFA_DEMO_SETUP.py
+python MFA_VERIFY_SETUP.py
+make run-whatsapp-bot
+make tunnel
 ```
 
 Visit: `http://localhost:8000`
@@ -118,6 +117,8 @@ Configure in `.env` (see `.env.example`). Sandbox mode enabled by default.
 See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for complete production setup including:
 - Security hardening
 - SSL/HTTPS configuration
+- WhatsApp bot container (`docker-compose.whatsapp.yml`)
+- Pricing estimator for PK: `python scripts/pricing_calculator.py --marketing 500 --utility 3000 --authentication 100`
 - Database backups
 - Monitoring setup
 - Client handover procedures

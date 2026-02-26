@@ -350,7 +350,7 @@ Get-ChildItem -Path src -Recurse -Directory | ForEach-Object {
 
 ```powershell
 # Move desktop app
-Copy-Item -Path "desktop/enhanced_chatbot_pro.py" -Destination "src/ui/desktop/app.py"
+Copy-Item -Path "desktop/MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)" -Destination "src/ui/desktop/app.py"
 
 # Move web files
 Copy-Item -Path "web/*" -Destination "src/ui/web/" -Recurse
@@ -563,7 +563,7 @@ This is the most important step. Here's how to refactor your existing code:
 
 **5.1 Extract Data Models**
 
-From `enhanced_chatbot_pro.py`, extract database models to `src/data/models/`:
+From `MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)`, extract database models to `src/data/models/`:
 
 ```python
 # src/data/models/user.py

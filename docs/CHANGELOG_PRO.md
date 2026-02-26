@@ -149,7 +149,7 @@ All notable changes to the AI Chatbot project.
 
 2. Run v2.1:
    ```bash
-   python enhanced_chatbot_pro.py
+   python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)
    ```
 
 3. Register new account

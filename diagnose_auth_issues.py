@@ -215,7 +215,7 @@ def main():
     if all_pass:
         print("🎉 All diagnostics passed! App should run correctly.")
         print("\n✅ Ready to start the application:")
-        print("   python enhanced_chatbot_pro.py")
+        print("   python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)")
         sys.exit(0)
     else:
         print("⚠️  Some diagnostics failed!")

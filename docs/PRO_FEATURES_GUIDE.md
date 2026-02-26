@@ -133,7 +133,7 @@ Secure login system allowing multiple users to maintain separate, private data.
 
 1. **Run the Application**
    ```bash
-   python enhanced_chatbot_pro.py
+   python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)
    ```
 
 2. **Register an Account**
@@ -529,7 +529,7 @@ Created: 2026-02-09 10:00 | Tags: important, work
 
 2. **Run Application**
    ```bash
-   python enhanced_chatbot_pro.py
+   python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)
    ```
 
 3. **Register Account**
@@ -652,7 +652,7 @@ Weekly:
 
 2. **Run the Pro Version**
    ```bash
-   python enhanced_chatbot_pro.py
+   python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)
    ```
 
 3. **Create Your Account**

@@ -203,8 +203,8 @@ Write-Host "📦 Phase 4: Moving Existing Files" -ForegroundColor Green
 Write-Host "-" * 50
 
 # Move desktop app
-if (Test-Path "desktop/enhanced_chatbot_pro.py") {
-    Copy-Item -Path "desktop/enhanced_chatbot_pro.py" -Destination "src/ui/desktop/app.py" -Force
+if (Test-Path "desktop/MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)") {
+    Copy-Item -Path "desktop/MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)" -Destination "src/ui/desktop/app.py" -Force
     Write-Host "  ✓ Moved desktop app" -ForegroundColor Gray
 }
 

@@ -27,7 +27,7 @@ They are already added to:
 
 1. Launch the app:
 ```bash
-python enhanced_chatbot_pro.py
+python MFA_DEMO_SETUP.py && python MFA_VERIFY_SETUP.py
 ```
 2. Log in with your registered account.
 3. Open MFA settings:

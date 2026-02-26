@@ -11,7 +11,7 @@ Write-Host ""
 Write-Host "🧹 Step 1: Removing duplicate and backup files..." -ForegroundColor Cyan
 
 $filesToRemove = @(
-    "enhanced_chatbot_pro.py.backup",
+    "MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed).backup",
     "README_NEW (1).md",
     "requirements_pro.txt"  # Keep only requirements.txt
 )
@@ -204,7 +204,7 @@ project-assistant-bot/
 ├── 📜 LICENSE                      # MIT License
 ├── 🔒 .gitignore                   # Git ignore rules
 ├── 📦 requirements.txt             # Python dependencies
-├── 🐍 enhanced_chatbot_pro.py      # Main application (Desktop)
+├── 🐍 MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)      # Main application (Desktop)
 │
 ├── 🌐 web/                         # Web Interface
 │   ├── index.html                  # Main HTML file
@@ -215,7 +215,7 @@ project-assistant-bot/
 │
 ├── 🖥️ desktop/                     # Desktop App (Modular - WIP)
 │   ├── enhanced_chatbot.py        # Alternative version
-│   ├── enhanced_chatbot_pro.py    # Pro version
+│   ├── MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)    # Pro version
 │   ├── enhanced_chatbot_pro_modules.py  # Extracted modules
 │   ├── requirements.txt
 │   ├── ai/                        # AI backend modules
@@ -265,12 +265,12 @@ project-assistant-bot/
 
 ## 🚀 Quick Start
 
-1. **Desktop App:** \`python enhanced_chatbot_pro.py\`
+1. **Desktop App:** \`python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)\`
 2. **Web Interface:** \`cd web && python -m http.server 8000\`
 
 ## 📝 Notes
 
-- Main desktop app is in root: \`enhanced_chatbot_pro.py\`
+- Main desktop app is in root: \`MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)\`
 - Modular version is WIP in \`desktop/\` folder
 - Web interface is complete in \`web/\` folder
 - All documentation in \`docs/\` folder
@@ -298,7 +298,7 @@ Write-Host ""
 
 Write-Host "🚀 Next Steps:" -ForegroundColor Yellow
 Write-Host "  1. Run: python migrate_database.py" -ForegroundColor Cyan
-Write-Host "  2. Test: python enhanced_chatbot_pro.py" -ForegroundColor Cyan
+Write-Host "  2. Test: python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)" -ForegroundColor Cyan
 Write-Host "  3. Check: git status" -ForegroundColor Cyan
 Write-Host "  4. Push: git add . && git commit -m 'Clean up structure' && git push" -ForegroundColor Cyan
 Write-Host ""

@@ -64,7 +64,7 @@ def migrate_database():
         
         conn.commit()
         print("\n✅ Database migration completed successfully!")
-        print("\n🚀 You can now run the app: python enhanced_chatbot_pro.py")
+        print("\n🚀 You can now run the app: python MFA_DEMO_SETUP.py + MFA_VERIFY_SETUP.py (legacy desktop app removed)")
         
     except Exception as e:
         print(f"\n❌ Migration failed: {e}")
