@@ -86,8 +86,6 @@ coverage.xml
 logs/
 data/logs/
 # Additional generated artifacts
-runtime.txt
-READY_TO_LAUNCH.md
 
 test_report.txt
 test_results.txt
