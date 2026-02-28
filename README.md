@@ -1,55 +1,53 @@
-# AI Project Assistant Pro
+﻿# 🤖 AI Business Chatbot (WhatsApp)
 
-A powerful AI-powered task management and productivity tool.
+A WhatsApp Business AI chatbot powered by Flask + Twilio + TOTP MFA.
 
 ## Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/Khan-Feroz211/AI-CHATBOT.git
-cd AI-CHATBOT
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run database migration (first time only)
-python migrate_database.py
-
-# Start the desktop app
-python enhanced_chatbot_pro.py
-
-# Or run the web version
-cd web
-python -m http.server 8000
-# Visit: http://localhost:8000
-```
-
-## Windows PowerShell (Path With Spaces)
-
-If your folder path has spaces (for example `C:\Users\Feroz Khan\...`), quote it:
-
-```powershell
-Set-Location "C:\Users\Feroz Khan\project-assistant-bot"
-python -m http.server 8000 --directory web
-```
-
-Visit: `http://127.0.0.1:8000`
+1. Fill .env with Twilio credentials
+2. Run: python scripts/setup_demo_data.py
+3. Run: python start_demo.py
+4. Copy webhook URL → paste in Twilio Sandbox Settings
+5. Send "join bite-drink" to +1 415 523 8886
+6. Send "hi" → bot replies with menu ✅
 
 ## Features
+- 🔐 TOTP MFA Authentication (Microsoft/Oracle Authenticator)
+- 📦 Stock Management
+- 🛒 Order Placement
+- 💰 Price Finder
+- 💳 Transaction History
+- 👤 Account Management
 
-- Task management with priorities
-- Smart note-taking with tags
-- AI chat assistant (OpenAI/Anthropic)
-- Guest mode (no registration needed)
-- Analytics dashboard
-- Export to PDF/Markdown
-- Secure user authentication
+## Project Structure
+```
+AI-CHATBOT/
+├── run.py                     # Flask app + webhook
+├── start_demo.py              # Demo runner
+├── whatsapp/
+│   ├── message_handler.py     # Message router
+│   ├── menu.py                # Main menu
+│   └── handlers.py            # Feature handlers
+├── auth/
+│   └── mfa_whatsapp.py        # TOTP MFA flow
+├── tests/
+│   └── test_bot.py            # Pytest tests
+└── scripts/
+    └── setup_demo_data.py     # Demo data setup
+```
 
-## Requirements
+## Environment Variables (.env)
+```
+TWILIO_ACCOUNT_SID=your_sid
+TWILIO_AUTH_TOKEN=your_token
+TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+```
 
-- Python 3.8+
-- See `requirements.txt` for dependencies
+## Installation
+```bash
+pip install flask twilio pyotp qrcode[pil] pytest
+python start_demo.py
+```
 
-## License
-
-MIT License - see `LICENSE`
+## Webhook Setup
+- Use ngrok: `ngrok http 5000`
+- Set webhook URL in Twilio Sandbox: `https://<your-ngrok>.ngrok.io/webhook`

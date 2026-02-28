@@ -1,33 +1,7 @@
-# Database files - DON'T push user data!
-chatbot_data/
-*.db
-*.sqlite
-*.db-journal
-
-# Desktop app data
-desktop/chatbot_data/
-
-# User uploads
-uploads/
-files/
-
-# Python cache
-__pycache__/
-*.py[cod]
-venv/
-env/
-
-# IDE files
-.vscode/
-.idea/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Environment variables
+﻿__pycache__/
+*.pyc
+*.pyo
 .env
-
-# Backup files
-*.backup
-*.bak
+*.png
+.venv/
+venv/
