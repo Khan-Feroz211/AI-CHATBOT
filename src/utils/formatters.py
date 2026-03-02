@@ -31,17 +31,17 @@ class WhatsAppFormatter:
 
     @staticmethod
     def format_currency(amount: float) -> str:
-        """Format amount as currency.
+        """Format amount as currency in Pakistani Rupees.
 
         Args:
             amount: Amount in decimal
 
         Returns:
-            Formatted currency string "Rs. 1,234.50"
+            Formatted currency string "₨1,500.00"
         """
         if isinstance(amount, Decimal):
             amount = float(amount)
-        return f"Rs. {amount:,.2f}"
+        return f"₨{amount:,.2f}"
 
     @staticmethod
     def format_quantity(qty: int, unit: str = "pcs") -> str:

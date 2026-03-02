@@ -1,5 +1,11 @@
 """Utilities package for WhatsApp Inventory Bot."""
 
+from src.utils.currency import (
+    calculate_total,
+    format_pkr,
+    get_currency_symbol,
+    parse_pkr,
+)
 from src.utils.db_helpers import (
     client_exists,
     get_client_by_phone,
@@ -41,6 +47,11 @@ from src.utils.validators import (
 )
 
 __all__ = [
+    # Currency utilities
+    "format_pkr",
+    "calculate_total",
+    "parse_pkr",
+    "get_currency_symbol",
     # Database helpers
     "get_client_by_phone",
     "get_or_create_client",

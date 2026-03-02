@@ -190,7 +190,7 @@ def log_payment_event(transaction_id: str, event: str, amount: float, success: b
     """
     logger = get_logger("payments")
     level = logging.INFO if success else logging.WARNING
-    msg = f"Transaction {transaction_id}: {event} - Rs. {amount:,.2f} - {'SUCCESS' if success else 'FAILED'}"
+    msg = f"Transaction {transaction_id}: {event} - ₨{amount:,.2f} - {'SUCCESS' if success else 'FAILED'}"
     logger.log(level, msg)
 
 

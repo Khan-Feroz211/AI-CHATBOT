@@ -222,7 +222,7 @@ class WhatsAppTester:
             ("Simple text", "This is a simple message"),
             ("With emoji", "Hello 👋 This is a test 🧪"),
             ("Multi-line", "Line 1\nLine 2\nLine 3"),
-            ("With special chars", "Price: $99.99, Discount: 50%"),
+            ("With special chars", "Price: ₨5,000.00, Discount: 50%"),
             ("Long message", "A" * 500),  # Test max length
         ]
 

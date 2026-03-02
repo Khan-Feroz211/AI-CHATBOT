@@ -14,6 +14,15 @@ try:
 except ImportError:  # pragma: no cover
     redis = None
 
+# Import demo handlers
+try:
+    from whatsapp_bot.demo_handlers import DemoConversationHandler
+except ImportError:
+    try:
+        from demo_handlers import DemoConversationHandler
+    except ImportError:
+        DemoConversationHandler = None
+
 app = Flask(__name__)
 
 # Required environment variables (no secrets in code)
@@ -45,6 +54,16 @@ if REDIS_URL and redis is not None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("redis_unavailable_fallback_memory", extra={"error": str(exc)})
         redis_client = None
+
+# Initialize demo handler
+demo_handler = None
+try:
+    if DemoConversationHandler:
+        demo_handler = DemoConversationHandler(PHONE_ID, ACCESS_TOKEN)
+        logger.info("Demo conversation handler initialized")
+except Exception as e:
+    logger.error(f"Failed to initialize demo handler: {e}")
+    demo_handler = None
 
 
 def _post_with_retry(
