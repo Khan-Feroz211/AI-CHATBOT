@@ -17,7 +17,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-PORT = int(os.environ.get("PORT", 5000))
 HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
 DEBUG = os.environ.get("FLASK_ENV", "production") == "development"
 shutdown_event = Event()
@@ -41,10 +40,11 @@ app = create_app()
 def main() -> None:
     """Run Flask app for local development and direct execution."""
     _register_signal_handlers()
-    logger.info("Starting app on %s:%s (debug=%s)", HOST, PORT, DEBUG)
+    port = int(os.environ.get("PORT", 5000))
+    logger.info("Starting app on %s:%s (debug=%s)", HOST, port, DEBUG)
 
     try:
-        app.run(host=HOST, port=PORT, debug=DEBUG, use_reloader=DEBUG, threaded=True)
+        app.run(host=HOST, port=port, debug=DEBUG, use_reloader=DEBUG, threaded=True)
     except KeyboardInterrupt:
         logger.info("Application stopped gracefully.")
     except Exception:

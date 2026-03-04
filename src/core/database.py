@@ -1,5 +1,8 @@
 """Database setup and connection management."""
 
+from __future__ import annotations
+
+import logging
 import os
 from contextlib import contextmanager
 
@@ -7,80 +10,71 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.core.config import Config
+from src.core.config import Config, normalize_database_url
 from src.core.models import Base
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
     """Database connection and session management."""
 
     def __init__(self, config: Config):
-        """Initialize database manager.
-
-        Args:
-            config: Configuration object with DATABASE_URL
-        """
         self.config = config
         self.engine = None
         self.SessionLocal = None
         self._init_engine()
 
-    def _init_engine(self):
-        """Initialize SQLAlchemy engine based on config."""
-        db_url = self.config.DATABASE_URL
+    def _init_engine(self) -> None:
+        db_url = normalize_database_url(self.config.DATABASE_URL)
 
-        # SQLite specific configuration
-        if "sqlite" in db_url:
-            # Handle in-memory database for testing
+        if db_url.startswith("sqlite"):
             if "memory" in db_url or ":memory:" in db_url:
                 engine_kwargs = {
                     "connect_args": {"check_same_thread": False},
                     "poolclass": StaticPool,
                 }
             else:
-                # File-based SQLite
                 db_path = (
-                    db_url.replace("sqlite:///", "")
-                    .replace("sqlite:///", "")
-                    .replace("sqlite:", "")
+                    db_url.replace("sqlite:///", "", 1)
+                    .replace("sqlite://", "", 1)
+                    .replace("sqlite:", "", 1)
                 )
                 db_dir = os.path.dirname(db_path)
                 if db_dir and not os.path.exists(db_dir):
                     os.makedirs(db_dir, exist_ok=True)
                 engine_kwargs = {"connect_args": {"check_same_thread": False}}
         else:
-            # PostgreSQL or other databases
-            engine_kwargs = {"pool_pre_ping": True, "pool_size": 10, "max_overflow": 20}
+            engine_kwargs = {
+                "pool_pre_ping": True,
+                "pool_size": int(os.environ.get("DB_POOL_SIZE", "5")),
+                "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", "10")),
+                "pool_timeout": int(os.environ.get("DB_POOL_TIMEOUT", "30")),
+                "pool_recycle": int(os.environ.get("DB_POOL_RECYCLE", "1800")),
+            }
 
         self.engine = create_engine(db_url, **engine_kwargs)
         self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
+            autocommit=False,
+            autoflush=False,
+            bind=self.engine,
+            expire_on_commit=False,
         )
+        logger.info("Database engine initialized")
 
-    def init_db(self):
-        """Initialize database - create all tables."""
+    def init_db(self) -> None:
+        """Initialize database and create all tables."""
         Base.metadata.create_all(bind=self.engine)
+        logger.info("Database schema ensured with create_all")
 
-    def drop_db(self):
-        """Drop all tables - used for testing."""
+    def drop_db(self) -> None:
         Base.metadata.drop_all(bind=self.engine)
 
     def get_session(self) -> Session:
-        """Get new database session.
-
-        Returns:
-            SQLAlchemy Session object
-        """
         return self.SessionLocal()
 
     @contextmanager
     def get_session_context(self):
-        """Context manager for database session.
-
-        Usage:
-            with db.get_session_context() as session:
-                # use session
-        """
         session = self.SessionLocal()
         try:
             yield session
@@ -91,65 +85,33 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def close(self):
-        """Close database connections."""
+    def close(self) -> None:
         if self.engine:
             self.engine.dispose()
 
 
-# Global database manager instance (initialized in Flask app)
-_db_manager = None
+_db_manager: DatabaseManager | None = None
 
 
 def init_database(config: Config) -> DatabaseManager:
-    """Initialize global database manager.
-
-    Args:
-        config: Configuration object
-
-    Returns:
-        DatabaseManager instance
-    """
     global _db_manager
     _db_manager = DatabaseManager(config)
-    _db_manager.init_db()  # Create tables
+    _db_manager.init_db()
     return _db_manager
 
 
 def get_db() -> DatabaseManager:
-    """Get global database manager.
-
-    Returns:
-        DatabaseManager instance
-
-    Raises:
-        RuntimeError: If database not initialized
-    """
     if _db_manager is None:
         raise RuntimeError("Database not initialized. Call init_database() first.")
     return _db_manager
 
 
 def get_session() -> Session:
-    """Get new database session.
-
-    Returns:
-        SQLAlchemy Session object
-
-    Raises:
-        RuntimeError: If database not initialized
-    """
     return get_db().get_session()
 
 
 @contextmanager
 def get_session_context():
-    """Context manager for database session.
-
-    Usage:
-        with get_session_context() as session:
-            # use session
-    """
     session = get_db().get_session()
     try:
         yield session
