@@ -22,7 +22,7 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
 # Initialize services
-mfa_service = MFAService(encryption_key=os.getenv("TOTP_ENCRYPTION_KEY", ""))
+mfa_service = MFAService(encryption_key=os.getenv("TOTP_ENCRYPTION_KEY") or None)
 session_manager = SessionManager()
 token_manager = SessionTokenManager()
 

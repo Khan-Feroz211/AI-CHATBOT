@@ -1,5 +1,7 @@
 """Session management for MFA authentication."""
 
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -30,19 +32,31 @@ class SessionConfig:
 
     @staticmethod
     def get_secret_key() -> str:
-        """Get JWT secret key from environment."""
-        secret = os.getenv("JWT_SECRET_KEY")
+        """Get JWT secret key from environment with production-safe fallbacks."""
+        secret = (
+            os.getenv("JWT_SECRET_KEY")
+            or os.getenv("JWT_SECRET")
+            or os.getenv("SECRET_KEY")
+        )
         if not secret:
-            raise ValueError("JWT_SECRET_KEY environment variable not set")
+            logger.warning(
+                "No JWT secret env var set (JWT_SECRET_KEY/JWT_SECRET/SECRET_KEY). "
+                "Using an ephemeral key; tokens will reset on restart."
+            )
+            secret = uuid.uuid4().hex
         return secret
 
     @staticmethod
     def get_encryption_key() -> bytes:
         """Get session encryption key."""
-        key = os.getenv("SESSION_ENCRYPTION_KEY")
-        if not key:
-            # Generate default key if not set (development only)
-            key = Fernet.generate_key().decode()
+        key = os.getenv("SESSION_ENCRYPTION_KEY") or os.getenv("TOTP_ENCRYPTION_KEY")
+        if key:
+            return key.encode() if isinstance(key, str) else key
+
+        # Deterministic fallback from app secret keeps sessions decryptable across restarts
+        # as long as SECRET_KEY/JWT_SECRET* remains stable.
+        secret = SessionConfig.get_secret_key().encode()
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret).digest()).decode()
         return key.encode() if isinstance(key, str) else key
 
 

@@ -92,7 +92,10 @@ class Config:
     COMPANY_PHONE = os.environ.get("COMPANY_PHONE", "")
     COMPANY_EMAIL = os.environ.get("COMPANY_EMAIL", "")
 
-    JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
+    JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
+    JWT_SECRET_KEY = JWT_SECRET
+    SESSION_ENCRYPTION_KEY = os.environ.get("SESSION_ENCRYPTION_KEY")
+    TOTP_ENCRYPTION_KEY = os.environ.get("TOTP_ENCRYPTION_KEY")
     JWT_EXPIRATION = timedelta(days=7)
 
     @staticmethod
