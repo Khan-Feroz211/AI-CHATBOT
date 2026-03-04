@@ -96,3 +96,7 @@ test_results.txt
 
 # Docker override files
 docker-compose.override.yml
+
+# Nested repo cleanup (keep only parent repo as deploy source)
+AI-CHATBOT/
+cloudflared.exe.exe
