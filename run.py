@@ -9,6 +9,19 @@ app = Flask(__name__)
 # Environment-based validation (disabled by default for demo)
 VALIDATE_TWILIO = os.environ.get("VALIDATE_TWILIO", "false").lower() == "true"
 
+
+@app.route("/", methods=["GET"])
+def home():
+    """Basic service info route for platform checks and manual browsing."""
+    return {
+        "status": "ok",
+        "service": "WhatsApp Bot",
+        "endpoints": {
+            "health": "/health",
+            "webhook": "/webhook",
+        },
+    }, 200
+
 @app.route("/webhook", methods=["POST", "GET"])
 def webhook():
     """Twilio WhatsApp webhook - MUST return TwiML format."""
