@@ -7,10 +7,36 @@ from whatsapp.handlers import (
     handle_supplier_buy, handle_unknown
 )
 
+
+def _normalize_message(message: str) -> str:
+    """Normalize interactive/menu text into stable command tokens."""
+    msg = (message or "").strip().lower()
+    if not msg:
+        return ""
+
+    # Strip common label prefixes (emoji/menu labels like "1️⃣ Check Stock")
+    if msg.startswith("1") or "check stock" in msg or "stock" in msg:
+        if "check stock" in msg or "stock" in msg:
+            return "stock"
+    if msg.startswith("2") or "place order" in msg:
+        if msg.startswith("order "):
+            return msg
+        return "order"
+    if msg.startswith("3") or "best price" in msg or msg == "price":
+        return "price"
+    if msg.startswith("4") or "transactions" in msg or "history" in msg:
+        return "transactions"
+    if msg.startswith("5") or "my account" in msg or msg == "account":
+        return "account"
+    if msg.startswith("6") or msg == "help":
+        return "help"
+
+    return msg
+
 def process_message(from_number, message):
     """Route incoming messages to appropriate handlers."""
     try:
-        message = message.strip().lower()
+        message = _normalize_message(message)
         
         # MFA DISABLED FOR DEMO - Uncomment below to enable
         # if not is_user_authenticated(from_number):

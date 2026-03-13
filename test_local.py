@@ -4,7 +4,7 @@
 import requests
 import time
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = "http://127.0.0.1:5000"
 TEST_PHONE = "whatsapp:+923108311917"
 
 def test_health():

@@ -55,9 +55,9 @@ def start_ngrok():
 def start_bot():
     """Start the WhatsApp bot."""
     print("🤖 Starting WhatsApp Bot...")
-    
-    # Change to AI-CHATBOT directory
-    bot_dir = Path(__file__).parent / "AI-CHATBOT"
+
+    # Ensure we run from this file's directory (repo root)
+    bot_dir = Path(__file__).parent
     os.chdir(bot_dir)
     
     # Start Flask app
