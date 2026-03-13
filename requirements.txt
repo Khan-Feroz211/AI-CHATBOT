@@ -1,6 +1,8 @@
-﻿flask>=2.3.0
+flask>=2.3.0
 twilio>=8.0.0
 pyotp>=2.9.0
 qrcode[pil]>=7.4.2
 pytest>=7.4.0
 python-dotenv>=1.0.0
+requests>=2.31.0
+gunicorn>=21.2.0
