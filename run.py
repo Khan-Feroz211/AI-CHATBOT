@@ -23,15 +23,23 @@ def home():
     }, 200
 
 @app.route("/webhook", methods=["POST", "GET"])
+@app.route("/webhook/", methods=["POST", "GET"])
 def webhook():
     """Twilio WhatsApp webhook - MUST return TwiML format."""
     if request.method == "GET":
         return "OK", 200
     
     try:
-        # Get incoming message details
+        # Get incoming message details (Twilio sends form-encoded data)
         incoming_msg = request.form.get("Body", "").strip()
         from_number = request.form.get("From", "").replace("whatsapp:", "")
+
+        # Helpful diagnostics in Railway logs when webhook payload is malformed
+        if not incoming_msg:
+            print(
+                f"⚠️ Empty Body received. method={request.method} content_type={request.content_type} "
+                f"form_keys={list(request.form.keys())}"
+            )
         
         # Sanitize input
         if len(incoming_msg) > 1000:
