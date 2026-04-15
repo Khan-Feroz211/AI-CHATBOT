@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}BazaarBot — Pakistan ki Business Assistant{% endblock %}
+{% block content %}
+<section class="landing">
+  <div class="hero">
+    <div class="hero-flag">🇵🇰 Made for Pakistan</div>
+    <h1>BazaarBot</h1>
+    <p class="hero-tagline">Pakistan ke chote dukandar ke liye AI business assistant</p>
+    <p class="hero-sub">WhatsApp pe stock manage karein, orders lein, payments karein, appointments book karein — bilkul asaan!</p>
+    <div class="hero-cta">
+      <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg"><i class="fas fa-sign-in-alt"></i> Admin Panel</a>
+      <a href="#features" class="btn btn-outline btn-lg"><i class="fas fa-info-circle"></i> Features</a>
+    </div>
+    <div class="hero-logos">
+      <span class="badge-pill">📱 WhatsApp</span>
+      <span class="badge-pill">💚 EasyPaisa</span>
+      <span class="badge-pill">🔵 JazzCash</span>
+      <span class="badge-pill">🏪 Jazz/Zong Dealers</span>
+    </div>
+  </div>
+
+  <div class="features-grid" id="features">
+    <div class="feature-card"><div class="fi">📦</div><h3>Stock Manager</h3><p>WhatsApp pe maal add karein, check karein, aur low stock alerts paaein.</p></div>
+    <div class="feature-card"><div class="fi">🏪</div><h3>Market Finder</h3><p>Karachi, Lahore, Islamabad ke wholesale markets aur suppliers dhundhein.</p></div>
+    <div class="feature-card"><div class="fi">💰</div><h3>EasyPaisa / JazzCash</h3><p>Payment request generate karein. Customers ko number bhejein.</p></div>
+    <div class="feature-card"><div class="fi">📅</div><h3>Appointment Booking</h3><p>Customer visit, delivery, ya meeting — sab WhatsApp pe book karein.</p></div>
+    <div class="feature-card"><div class="fi">🛍️</div><h3>Order Management</h3><p>Customer orders WhatsApp pe lein — inventory auto-update ho jaye.</p></div>
+    <div class="feature-card"><div class="fi">📊</div><h3>Sales Dashboard</h3><p>Aaj ki sales, stock alerts, messages — ek jagah dashboard pe.</p></div>
+  </div>
+
+  <div class="pricing" id="pricing">
+    <h2>Plans — Sab ke liye aasaan</h2>
+    <div class="pricing-grid">
+      <div class="plan-card">
+        <div class="plan-name">Starter</div>
+        <div class="plan-price">Free</div>
+        <ul><li>✅ 100 messages/month</li><li>✅ WhatsApp bot</li><li>✅ Stock manager</li><li>❌ Payment integration</li><li>❌ Dashboard</li></ul>
+        <a href="{{ url_for('login') }}" class="btn btn-outline">Shuru Karein</a>
+      </div>
+      <div class="plan-card featured">
+        <div class="plan-badge">Sabse Popular</div>
+        <div class="plan-name">Business</div>
+        <div class="plan-price">₨1,500<span>/month</span></div>
+        <ul><li>✅ Unlimited messages</li><li>✅ EasyPaisa/JazzCash</li><li>✅ Admin dashboard</li><li>✅ Appointment booking</li><li>✅ Email notifications</li></ul>
+        <a href="https://wa.me/923000000000?text=BazaarBot+Business+plan+chahiye" class="btn btn-primary">Order Karein</a>
+      </div>
+      <div class="plan-card">
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">₨3,500<span>/month</span></div>
+        <ul><li>✅ Sab Business features</li><li>✅ Multi-branch support</li><li>✅ REST API</li><li>✅ Priority support</li><li>✅ Custom branding</li></ul>
+        <a href="mailto:sales@bazaarbot.pk" class="btn btn-outline">Contact Karein</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>🇵🇰 BazaarBot — Pakistan ka apna business assistant</p>
+    <p><a href="mailto:sales@bazaarbot.pk">sales@bazaarbot.pk</a> | WhatsApp: 0300-BAZRBOT</p>
+  </footer>
+</section>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Stock / Inventory — BazaarBot{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fas fa-boxes"></i> Mera Stock</h1>
+  {% if low_stock %}<span class="badge badge-warning">⚠️ {{ low_stock|length }} low stock</span>{% endif %}
+</div>
+<div class="inventory-layout">
+  <div class="inv-form-section">
+    <h2>Product Add / Update</h2>
+    <form method="POST" action="{{ url_for('inventory_save') }}" class="inv-form">
+      <div class="form-group"><label>Product Naam *</label><input type="text" name="product_name" required placeholder="Atta, Chawal..."></div>
+      <div class="form-group"><label>Category</label>
+        <select name="category">
+          <option value="food">Food / Khana</option>
+          <option value="household">Household</option>
+          <option value="electronics">Electronics</option>
+          <option value="clothing">Clothing</option>
+          <option value="medicine">Medicine</option>
+          <option value="telecom">Telecom</option>
+          <option value="general">General</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Quantity *</label><input type="number" name="quantity" required min="0" placeholder="100"></div>
+      <div class="form-group"><label>Unit</label><input type="text" name="unit" placeholder="kg, box, pieces" value="pieces"></div>
+      <div class="form-group"><label>Buy Price (₨)</label><input type="number" name="buy_price" step="0.01" min="0" placeholder="60"></div>
+      <div class="form-group"><label>Sell Price (₨) *</label><input type="number" name="sell_price" step="0.01" min="0" required placeholder="75"></div>
+      <div class="form-group"><label>Reorder Level</label><input type="number" name="reorder_level" min="0" placeholder="10" value="10"></div>
+      <div class="form-group"><label>Supplier</label><input type="text" name="supplier" placeholder="National Foods..."></div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+    </form>
+  </div>
+  <div class="inv-list-section">
+    <h2>Products ({{ items|length }})</h2>
+    {% if items %}
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Product</th><th>Cat</th><th>Qty</th><th>Unit</th><th>Buy</th><th>Sell</th><th>Supplier</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for item in items %}
+        <tr class="{% if item.quantity == 0 %}row-danger{% elif item.quantity <= item.reorder_level %}row-warning{% endif %}">
+          <td><strong>{{ item.product_name }}</strong></td>
+          <td>{{ item.category }}</td>
+          <td>{{ item.quantity }}</td>
+          <td>{{ item.unit }}</td>
+          <td>₨{{ "{:,.0f}".format(item.buy_price) }}</td>
+          <td>₨{{ "{:,.0f}".format(item.sell_price) }}</td>
+          <td>{{ item.supplier or '—' }}</td>
+          <td>
+            {% if item.quantity == 0 %}<span class="badge badge-danger">Out</span>
+            {% elif item.quantity <= item.reorder_level %}<span class="badge badge-warning">Low</span>
+            {% else %}<span class="badge badge-success">OK</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}<p class="muted">Abhi koi products nahi. Upar form se add karein ya WhatsApp pe <code>add product</code> likhein.</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

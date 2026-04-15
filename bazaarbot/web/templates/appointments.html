@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Appointments — BazaarBot{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fas fa-calendar"></i> Appointments</h1>
+  <span class="muted">Upcoming: {{ appointments|length }}</span>
+</div>
+{% if appointments %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>#</th><th>Phone</th><th>Date</th><th>Time</th><th>Purpose</th><th>Status</th><th>Action</th></tr></thead>
+  <tbody>
+    {% for a in appointments %}
+    <tr>
+      <td>{{ a.id }}</td>
+      <td>{{ a.phone }}</td>
+      <td>{{ a.appointment_date }}</td>
+      <td>{{ a.appointment_time }}</td>
+      <td>{{ a.purpose or '—' }}</td>
+      <td><span class="badge badge-{% if a.status=='booked' %}success{% else %}danger{% endif %}">{{ a.status }}</span></td>
+      <td>
+        <form method="POST" action="{{ url_for('cancel_apt', apt_id=a.id) }}"
+              onsubmit="return confirm('Cancel karein?')">
+          <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-times"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Koi upcoming appointments nahi. WhatsApp pe <code>5</code> ya <code>appointment</code> likhein book karne ke liye.</p>
+{% endif %}
+{% endblock %}

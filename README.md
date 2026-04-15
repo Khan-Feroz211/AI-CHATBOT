@@ -1,176 +1,151 @@
-# WhatsApp Business Bot - Quick Start
+# 🇵🇰 BazaarBot — Pakistan ki Apni Business Assistant
 
-Production-ready WhatsApp bot with Twilio integration, MFA authentication, and business features.
+## Kya Hai? / What is it?
 
-## Features
+**BazaarBot** ek AI-powered WhatsApp business assistant hai jo Pakistani chote
+dukandar, retailers, aur service providers ke liye specifically design kiya gaya
+hai. Yeh aapko WhatsApp pe hi poora business manage karne ki suvidha deta hai —
+bina kisi complex software ke.
 
-✅ **TwiML Response Format** - Proper XML responses for Twilio
-✅ **MFA Authentication** - TOTP-based security with QR codes
-✅ **Business Functions** - Stock, Orders, Pricing, Transactions
-✅ **PKR Currency** - Pakistan Rupee formatting
-✅ **Error Handling** - Comprehensive error recovery
-✅ **Health Checks** - Monitoring endpoints
+> **Target users:** Jazz/Zong franchise dealers, kirana store owners, wholesale
+> merchants, service providers, restaurant/dhaba owners, mobile shop dealers
 
-## Quick Start
+---
 
-### 1. Install Dependencies
+## Features / Kya Kar Sakta Hai?
 
+| Feature | WhatsApp Command | Description |
+|---------|-----------------|-------------|
+| 📦 Stock Manager | `1` / `stock` | Check inventory, add/update products |
+| 🛍️ Order Management | `2` / `order` | Take customer orders on WhatsApp |
+| 🏪 Market Finder | `3` / `market karachi` | Find wholesale markets by city |
+| 💰 Payments | `4` / `payment` | Share EasyPaisa/JazzCash details |
+| 📅 Appointments | `5` / `appointment` | Book/manage customer visits |
+| 💳 Order History | `6` / `history` | View past sales |
+| ❓ Help | `7` / `help` | Full command list |
+
+### WhatsApp Quick Commands
+```
+add product Atta 100 kg 70      → Add/update product
+sell Atta 5                     → Record a sale (-5 from stock)
+update Atta 200                 → Set stock to exact quantity
+order Atta 5                    → Customer places an order
+market lahore                   → Find Lahore wholesale markets
+appoint 2026-05-01 10:00 Delivery → Book an appointment
+```
+
+---
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Language  | Python 3.12 |
+| Web/API   | Flask 3, Flask-Limiter |
+| Bot channel | Twilio WhatsApp API |
+| NLP/AI    | TF-IDF + Cosine RAG (scikit-learn) — no external API required |
+| Database  | SQLite (WAL mode, multi-tenant) |
+| Hosting   | Railway / Render / Docker |
+| Notifications | SMTP email (Gmail/Zoho) |
+
+---
+
+## Quick Start / Jaldi Shuru Karein
+
+### 1. Requirements install karein
 ```bash
-cd AI-CHATBOT
 pip install -r requirements.txt
 ```
 
-### 2. Configure Twilio
-
-Edit `.env` in parent directory:
-```env
-TWILIO_ACCOUNT_SID=your_account_sid
-TWILIO_AUTH_TOKEN=your_auth_token
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+### 2. Environment variables set karein
+```bash
+cp .env.example .env
+# .env file mein apna password aur credentials bharein
 ```
 
-### 3. Run Bot Locally
+### 3. Pehla tenant setup karein
+```bash
+python run.py --setup-tenant
+```
 
+### 4. Server start karein
 ```bash
 python run.py
+# Dashboard: http://localhost:5000/dashboard  (password: .env mein set karein)
+# WhatsApp Webhook: http://localhost:5000/webhook
 ```
 
-Bot starts on: `http://localhost:5000`
+### 5. Twilio WhatsApp configure karein
+- Twilio Console mein WhatsApp Sandbox activate karein
+- Webhook URL: `https://your-domain.com/webhook`
 
-### 4. Test Locally
+---
 
-```bash
-python test_local.py
-```
+## Pricing Plans / Qeemat
 
-### 5. Start Demo with Ngrok
+| Plan | Price | Msgs/Month | Features |
+|------|-------|-----------|---------|
+| **Starter** | Free | 100 | WhatsApp bot, stock manager |
+| **Business** | Rs.1,500/month | Unlimited | + EasyPaisa/JazzCash, dashboard, email |
+| **Pro** | Rs.3,500/month | Unlimited | + Multi-branch, REST API, priority support |
 
-```bash
-python start_demo.py
-```
+---
 
-This will:
-- Start the bot
-- Launch ngrok tunnel
-- Display webhook URL for Twilio
+## Deployment / Deploy Karna
 
-### 6. Configure Twilio Sandbox
-
-1. Go to: https://console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn
-2. Paste webhook URL in "WHEN A MESSAGE COMES IN"
-3. Click Save
-4. Send `join <code>` to Twilio WhatsApp number
-5. Send `hi` to start!
-
-## Bot Commands
-
-| Command | Description |
-|---------|-------------|
-| `hi`, `hello`, `menu` | Show main menu |
-| `1`, `stock` | Check inventory |
-| `2`, `order` | Place order |
-| `order Product A 50` | Create order |
-| `3`, `price` | Find best prices |
-| `product a` | Price lookup |
-| `4`, `transactions` | View history |
-| `5`, `account` | My account |
-| `6`, `help` | Help menu |
-| `reorder Product B` | Restock product |
-| `receipt ORD-001` | Get receipt |
-| `buy from supplier 1 Product A 100` | Supplier order |
-
-## File Structure
-
-```
-AI-CHATBOT/
-├── run.py                    # Main Flask app
-├── start_demo.py             # Demo launcher with ngrok
-├── test_local.py             # Local testing script
-├── requirements.txt          # Dependencies
-├── auth/
-│   ├── __init__.py
-│   └── mfa_whatsapp.py      # MFA authentication
-└── whatsapp/
-    ├── __init__.py
-    ├── message_handler.py    # Message router
-    ├── handlers.py           # Business logic
-    └── menu.py               # Menu templates
-```
-
-## Endpoints
-
-- `POST /webhook` - Twilio webhook (TwiML response)
-- `GET /webhook` - Webhook verification
-- `GET /health` - Health check
-
-## Testing
-
-### Manual Test
-```bash
-curl -X POST http://localhost:5000/webhook \
-  -d "Body=hi&From=whatsapp:+923001234567"
-```
-
-### Automated Tests
-```bash
-python test_local.py
-```
-
-## Troubleshooting
-
-### Bot not responding?
-- Check bot is running: `curl http://localhost:5000/health`
-- Check Twilio webhook URL is correct
-- Check console for errors
-
-### Twilio sending template instead of bot reply?
-- Verify webhook returns TwiML format
-- Check Content-Type is `text/xml`
-- Verify webhook URL in Twilio console
-
-### MFA not working?
-- QR codes saved in current directory
-- Use Microsoft Authenticator or Oracle Authenticator
-- Check 6-digit code is current
-
-## Production Deployment
+### Railway (Recommended)
+Set these environment variables on Railway:
+`SECRET_KEY, ADMIN_PASSWORD, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN`
 
 ### Docker
 ```bash
-docker build -t whatsapp-bot .
-docker run -p 5000:5000 --env-file ../.env whatsapp-bot
+docker build -t bazaarbot .
+docker run -p 5000:5000 --env-file .env bazaarbot
 ```
 
-### Heroku
-```bash
-heroku create your-bot-name
-git push heroku main
-heroku config:set TWILIO_ACCOUNT_SID=xxx
-heroku config:set TWILIO_AUTH_TOKEN=xxx
+---
+
+## REST API
+
+```http
+POST /api/message
+Content-Type: application/json
+
+{"phone": "+923001234567", "message": "stock", "tenant": "my-shop"}
 ```
 
-### Railway
-```bash
-railway init
-railway up
+```json
+{"response": "📦 Aapka Stock...", "intent": "stock_check"}
 ```
 
-## Security Notes
+---
 
-- Never commit `.env` file
-- Change `SECRET_KEY` in production
-- Enable `VALIDATE_TWILIO=true` in production
-- Use environment variables for secrets
-- Rate limit webhook in production
+## Architecture
 
-## Support
+```
+run.py                          ← Single entrypoint
+bazaarbot/
+  config.py                     ← Environment config
+  database.py                   ← SQLite (multi-tenant)
+  nlp/
+    rag_engine.py               ← TF-IDF intent classifier + RAG
+    knowledge_base/             ← Pakistan markets, payments, FAQ (Markdown)
+  bot/
+    intent_router.py            ← Main dispatcher (session-aware)
+    handlers.py                 ← Business logic handlers
+    menu.py                     ← WhatsApp menu strings
+  channels/
+    whatsapp.py                 ← Twilio outbound
+    email_channel.py            ← SMTP notifications
+  web/
+    app.py                      ← Flask routes, webhook, REST API
+    templates/                  ← Jinja2 dashboard templates
+    static/                     ← CSS + JS
+tests/
+  test_bot.py                   ← 46 tests
+```
 
-For issues or questions:
-- Check console logs
-- Review Twilio webhook logs
-- Test with `test_local.py`
-- Check health endpoint
+---
 
 ## License
-
-MIT License
+MIT
