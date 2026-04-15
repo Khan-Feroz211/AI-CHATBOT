@@ -315,12 +315,15 @@ def webhook():
         if request.method == "GET" and payload.get("hub.mode") == "subscribe":
             token = config.WEBHOOK_VERIFY_TOKEN
             if token and payload.get("hub.verify_token") == token:
-                # Sanitize challenge: only allow alphanumeric characters,
-                # then return as plain-text (not HTML) to prevent XSS.
-                raw = str(payload.get("hub.challenge", ""))
-                safe = re.sub(r"[^a-zA-Z0-9]", "", raw)[:128]
+                # Meta hub.challenge is always a numeric integer.
+                # Parse as int (raises ValueError for non-numeric input) so
+                # there is no user-controlled string in the response body.
+                try:
+                    challenge_int = int(str(payload.get("hub.challenge", "0")))
+                except ValueError:
+                    challenge_int = 0
                 from flask import make_response
-                resp_obj = make_response(safe)
+                resp_obj = make_response(str(challenge_int))
                 resp_obj.content_type = "text/plain; charset=utf-8"
                 return resp_obj, 200
             return "forbidden", 403

@@ -273,10 +273,10 @@ class TestWebhook:
         r = client.get("/webhook", query_string={
             "hub.mode": "subscribe",
             "hub.verify_token": "mytoken",
-            "hub.challenge": "abc123"
+            "hub.challenge": "1234567890"
         })
         assert r.status_code == 200
-        assert b"abc123" in r.data
+        assert b"1234567890" in r.data
 
     def test_health(self, client):
         r = client.get("/health")
