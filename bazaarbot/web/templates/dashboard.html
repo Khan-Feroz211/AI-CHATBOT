@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — BazaarBot{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fas fa-chart-line"></i> Dashboard</h1>
+  <div class="tenant-switcher">
+    <label>Tenant:</label>
+    <select id="tenantSelect">
+      {% for t in tenants %}
+      <option value="{{ t.slug }}" {% if t.slug==tenant_slug %}selected{% endif %}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-icon">💬</div><div class="stat-value">{{ analytics.today_messages }}</div><div class="stat-label">Aaj ke Messages</div></div>
+  <div class="stat-card"><div class="stat-icon">🛍️</div><div class="stat-value">{{ analytics.total_orders }}</div><div class="stat-label">Total Orders</div></div>
+  <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-value">₨{{ "{:,.0f}".format(analytics.total_revenue) }}</div><div class="stat-label">Total Revenue</div></div>
+  <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">{{ analytics.upcoming_appointments }}</div><div class="stat-label">Upcoming Appointments</div></div>
+  <div class="stat-card {% if analytics.low_stock_items > 0 %}stat-warning{% endif %}">
+    <div class="stat-icon">⚠️</div><div class="stat-value">{{ analytics.low_stock_items }}</div><div class="stat-label">Low Stock Items</div>
+  </div>
+  <div class="stat-card intents-card">
+    <div class="stat-icon">🧠</div><div class="stat-label">Top Intents</div>
+    {% if analytics.top_intents %}
+    <ul class="intent-list">
+      {% for intent, count in analytics.top_intents.items() %}
+      <li><span class="intent-tag">{{ intent }}</span><span class="intent-count">{{ count }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Abhi koi data nahi</p>{% endif %}
+  </div>
+</div>
+
+{% if low_stock %}
+<div class="alert alert-error">
+  ⚠️ <strong>{{ low_stock|length }} items ka stock kam hai!</strong>
+  {% for item in low_stock[:5] %}{{ item.product_name }} ({{ item.quantity }} {{ item.unit }}){% if not loop.last %}, {% endif %}{% endfor %}
+  <a href="{{ url_for('inventory') }}" style="margin-left:.5rem">Stock update karein →</a>
+</div>
+{% endif %}
+
+<div class="dashboard-body">
+  <div class="chat-feed-section">
+    <h2>Recent Messages</h2>
+    <div class="chat-feed">
+      {% for msg in messages %}
+      <div class="feed-item feed-{{ msg.direction }}">
+        <div class="feed-meta">
+          <span class="feed-phone">{{ msg.phone }}</span>
+          {% if msg.intent %}<span class="intent-badge">{{ msg.intent }}</span>{% endif %}
+          <span class="feed-time">{{ msg.created_at[:16] }}</span>
+        </div>
+        <div class="feed-content">{{ msg.content }}</div>
+      </div>
+      {% else %}
+      <p class="muted">Abhi koi messages nahi. WhatsApp se bot ko message karein ya niche chat widget use karein.</p>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="chat-widget-section">
+    <h2>🤖 Bot Test Karein</h2>
+    <div class="chat-widget">
+      <div class="cw-messages" id="cwMessages"></div>
+      <div class="cw-input">
+        <input type="text" id="cwInput" placeholder="Message likhein..." autocomplete="off">
+        <button id="cwSend" class="btn btn-primary"><i class="fas fa-paper-plane"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+  initChatWidget('{{ tenant_slug }}');
+  document.getElementById('tenantSelect').addEventListener('change', function() {
+    var slug = this.value.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (slug) window.location = '/dashboard/switch/' + encodeURIComponent(slug);
+  });
+</script>
+{% endblock %}

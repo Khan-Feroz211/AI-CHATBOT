@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Settings — BazaarBot{% endblock %}
+{% block content %}
+<div class="page-header"><h1><i class="fas fa-cog"></i> Settings</h1></div>
+<div class="settings-layout">
+  <div class="settings-section">
+    <h2>Aapka Business</h2>
+    <form method="POST">
+      <div class="form-group"><label>Business Name *</label><input type="text" name="name" value="{{ tenant.name or '' }}" required></div>
+      <div class="form-group"><label>City</label>
+        <select name="city">
+          {% for c in ['Karachi','Lahore','Islamabad','Rawalpindi','Faisalabad','Multan','Peshawar','Quetta','Sialkot','Gujranwala'] %}
+          <option value="{{ c }}" {% if tenant.city==c %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label>Business Type</label>
+        <select name="business_type">
+          {% for v,l in [('retail','Retail Shop'),('wholesale','Wholesale'),('restaurant','Restaurant/Dhaba'),('telecom','Telecom Franchise'),('clinic','Clinic/Pharmacy'),('service','Service')] %}
+          <option value="{{ v }}" {% if tenant.business_type==v %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label>Owner Phone</label><input type="text" name="owner_phone" value="{{ tenant.owner_phone or '' }}" placeholder="03XXXXXXXXX"></div>
+      <div class="form-group"><label>Owner Email</label><input type="email" name="owner_email" value="{{ tenant.owner_email or '' }}"></div>
+      <h3 style="margin:.8rem 0 .5rem;color:var(--primary)">💰 Payment Details</h3>
+      <div class="form-group"><label>EasyPaisa Number</label><input type="text" name="easypaisa_number" value="{{ tenant.easypaisa_number or '' }}" placeholder="03XX-XXXXXXX"></div>
+      <div class="form-group"><label>JazzCash Number</label><input type="text" name="jazzcash_number" value="{{ tenant.jazzcash_number or '' }}" placeholder="03XX-XXXXXXX"></div>
+      <div class="form-group"><label>Bank Name</label><input type="text" name="bank_title" value="{{ tenant.bank_title or '' }}" placeholder="HBL, Meezan..."></div>
+      <div class="form-group"><label>Bank IBAN</label><input type="text" name="bank_iban" value="{{ tenant.bank_iban or '' }}" placeholder="PKXX..."></div>
+      <div class="form-group"><label>Notification Email</label><input type="email" name="notify_email" value="{{ tenant.notify_email or '' }}"></div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Karein</button>
+    </form>
+  </div>
+  <div class="settings-section">
+    <h2>Environment Variables</h2>
+    <p class="muted">Yeh variables <code>.env</code> file ya Railway/Docker environment mein set karein.</p>
+    <table class="env-table">
+      <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>SECRET_KEY</code></td><td>Flask session key (zaroor change karein)</td></tr>
+        <tr><td><code>ADMIN_PASSWORD</code></td><td>Dashboard password</td></tr>
+        <tr><td><code>TWILIO_ACCOUNT_SID</code></td><td>Twilio SID (WhatsApp ke liye)</td></tr>
+        <tr><td><code>TWILIO_AUTH_TOKEN</code></td><td>Twilio Auth Token</td></tr>
+        <tr><td><code>TWILIO_WHATSAPP_FROM</code></td><td>WhatsApp sender number</td></tr>
+        <tr><td><code>SMTP_HOST/USER/PASS</code></td><td>Email notification config</td></tr>
+        <tr><td><code>DATABASE_PATH</code></td><td>SQLite file path (default: bazaarbot.db)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
