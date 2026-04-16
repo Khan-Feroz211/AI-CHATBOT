@@ -126,9 +126,9 @@ async def call_llm(
             resp = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
-                max_tokens=300,
+                max_tokens=Config.LLM_MAX_TOKENS,
                 temperature=0.3,
-                timeout=8,
+                timeout=Config.LLM_TIMEOUT_SECONDS,
             )
             return resp.choices[0].message.content
 
@@ -139,9 +139,9 @@ async def call_llm(
             resp = await client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=messages,
-                max_tokens=300,
+                max_tokens=Config.LLM_MAX_TOKENS,
                 temperature=0.3,
-                timeout=8,
+                timeout=Config.LLM_TIMEOUT_SECONDS,
             )
             return resp.choices[0].message.content
 

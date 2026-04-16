@@ -6,7 +6,7 @@ Day 3 additions (backward-compatible):
 - _classify_intent_scored(): returns (intent, confidence_score)
 - answer_async(): async version that can trigger LLM fallback when:
     a) USE_LLM_FALLBACK=true in env AND
-    b) confidence score < 0.30 OR intent == "unknown"
+    b) confidence score < Config.LLM_CONFIDENCE_THRESHOLD OR intent == "unknown"
   The sync answer() is completely unchanged — all existing tests use it.
 """
 import os
@@ -15,6 +15,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from bazaarbot.database import get_knowledge_docs
+from bazaarbot.config import Config
 
 # ── Intent training phrases ───────────────────────────────────────────────
 # Each list includes common English terms + Urdu romanisation used in
@@ -252,7 +253,7 @@ class RAGEngine:
             return intent, direct
 
         # High-confidence intent handled by the router — skip LLM
-        if score >= 0.30 and intent != "unknown":
+        if score >= Config.LLM_CONFIDENCE_THRESHOLD and intent != "unknown":
             return intent, None
 
         # Low confidence or unknown: attempt LLM fallback

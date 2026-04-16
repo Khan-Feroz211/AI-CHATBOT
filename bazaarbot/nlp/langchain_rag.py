@@ -4,7 +4,7 @@ Provides richer semantic retrieval using FAISS + HuggingFace embeddings
 as a complement to the existing TF-IDF RAG engine.
 
 Key design decisions:
-- Uses sentence-transformers/all-MiniLM-L6-v2 (CPU-only, no API key)
+- Embedding model is read from Config.LANGCHAIN_EMBED_MODEL (CPU-only, no API key)
 - Loaded lazily; falls back silently to TF-IDF if anything goes wrong
 - Thread-safe re-initialisation via module-level lock
 - `retrieve_langchain()` always returns a string (never raises)
@@ -15,10 +15,11 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+from bazaarbot.config import Config
+
 logger = logging.getLogger(__name__)
 
 KNOWLEDGE_BASE_DIR = Path(__file__).parent / "knowledge_base"
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHUNK_SIZE = 400
 CHUNK_OVERLAP = 50
 
@@ -112,7 +113,7 @@ def load_knowledge_base(
 
     try:
         embeddings = HuggingFaceEmbeddings(
-            model_name=EMBED_MODEL,
+            model_name=Config.LANGCHAIN_EMBED_MODEL,
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )

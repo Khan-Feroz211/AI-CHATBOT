@@ -193,8 +193,9 @@ async def process_message_async(
     lower = message.lower()
 
     # Inbound log (pg async)
-    await pg.async_log_message(tenant_slug, phone, "inbound", message,
-                                channel=channel)
+    await pg.async_log_message(
+        tenant_slug, phone, "inbound", message, channel=channel
+    )
 
     # Session and tenant from PostgreSQL
     session = await pg.async_get_session(tenant_slug, phone)
@@ -206,8 +207,9 @@ async def process_message_async(
     )
 
     # Outbound log (pg async)
-    await pg.async_log_message(tenant_slug, phone, "outbound", response,
-                                channel=channel)
+    await pg.async_log_message(
+        tenant_slug, phone, "outbound", response, channel=channel
+    )
     return response
 
 
