@@ -1,0 +1,1 @@
+"""BazaarBot authentication package."""
