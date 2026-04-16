@@ -57,5 +57,10 @@ class Config:
     # ── Multi-tenancy ─────────────────────────────────────────────────────
     DEFAULT_TENANT: str = os.environ.get("DEFAULT_TENANT", "default")
 
+    # ── LLM fallback (Day 3+, optional) ──────────────────────────────────
+    USE_LLM_FALLBACK: bool = os.environ.get("USE_LLM_FALLBACK", "false").lower() == "true"
+    LLM_PROVIDER: str = os.environ.get("LLM_PROVIDER", "none")  # "openai", "groq", or "none"
+    LLM_API_KEY: str = os.environ.get("LLM_API_KEY", "")
+
 
 config = Config()

@@ -17,3 +17,10 @@ python-jose[cryptography]>=3.4.0
 alembic>=1.13.0
 psycopg2-binary>=2.9.9
 bcrypt>=4.0.0
+# ── Day 3: LLM fallback + LangChain RAG (optional, env-toggled) ──────────
+langchain>=0.3.0
+langchain-community>=0.3.0
+faiss-cpu>=1.9.0
+sentence-transformers>=3.0.0
+openai>=1.35.0
+groq>=0.9.0

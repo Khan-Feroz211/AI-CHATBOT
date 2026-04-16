@@ -1,6 +1,13 @@
 """TF-IDF RAG engine — intent classification + knowledge retrieval.
 
 No external API required. Runs fully offline.
+
+Day 3 additions (backward-compatible):
+- _classify_intent_scored(): returns (intent, confidence_score)
+- answer_async(): async version that can trigger LLM fallback when:
+    a) USE_LLM_FALLBACK=true in env AND
+    b) confidence score < 0.30 OR intent == "unknown"
+  The sync answer() is completely unchanged — all existing tests use it.
 """
 import os
 import glob as _glob
@@ -121,6 +128,22 @@ class RAGEngine:
             return "unknown"
         return self._intent_labels[best]
 
+    def _classify_intent_scored(self, query: str) -> tuple:
+        """Return (intent, confidence_score) for *query*.
+
+        Like classify_intent() but also exposes the raw similarity score
+        so callers (e.g. answer_async) can decide whether to use LLM fallback.
+        """
+        if not query.strip():
+            return "greet", 1.0
+        q = self._intent_vectorizer.transform([query.lower()])
+        sims = cosine_similarity(q, self._intent_matrix)[0]
+        best = int(np.argmax(sims))
+        score = float(sims[best])
+        if score < 0.12:
+            return "unknown", score
+        return self._intent_labels[best], score
+
     def load_tenant_docs(self, tenant_slug: str):
         """Reload knowledge docs from filesystem + DB for *tenant_slug*."""
         # Sanitize tenant_slug to prevent path traversal
@@ -200,6 +223,64 @@ class RAGEngine:
                     "━━━━━━━━━━━━━━━━━━\n"
                     "Aur madad ke liye *menu* likhein."
                 )
+        return intent, None
+
+    async def answer_async(
+        self,
+        query: str,
+        tenant_data: dict | None = None,
+    ) -> tuple:
+        """Async version of answer() that can use LLM fallback.
+
+        Called from FastAPI async handlers.  The sync answer() still works
+        unchanged for all existing tests.
+
+        Flow:
+        1. TF-IDF intent classification with confidence score.
+        2. If score >= 0.30 and intent != "unknown":
+           return same result as sync answer() (TF-IDF path).
+        3. If score < 0.30 OR intent == "unknown":
+           a. Try LangChain RAG for richer context.
+           b. If LLM enabled: call llm_service.call_llm() with that context.
+           c. If LLM returns a response: return ("llm", response).
+           d. If LLM disabled/failed: fall through to TF-IDF RAG result.
+        4. Return TF-IDF result as a safe fallback.
+        """
+        intent, score = self._classify_intent_scored(query)
+        direct = _DIRECT_RESPONSES.get(intent)
+        if direct:
+            return intent, direct
+
+        # High-confidence intent handled by the router — skip LLM
+        if score >= 0.30 and intent != "unknown":
+            return intent, None
+
+        # Low confidence or unknown: attempt LLM fallback
+        from bazaarbot.nlp.langchain_rag import retrieve_langchain
+        from bazaarbot.nlp.llm_service import is_llm_enabled, call_llm
+
+        lc_context = retrieve_langchain(query)
+        # Fall back to TF-IDF snippets when LangChain is not loaded
+        context = lc_context if lc_context else self.retrieve(query)
+
+        if is_llm_enabled():
+            llm_response = await call_llm(
+                query=query,
+                context=context,
+                tenant_data=tenant_data or {},
+            )
+            if llm_response:
+                return "llm", llm_response
+
+        # LLM disabled or failed: use TF-IDF RAG snippet
+        if context:
+            return intent, (
+                "🤖 *BazaarBot Assistant*\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                f"{context[:400]}\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "Aur madad ke liye *menu* likhein."
+            )
         return intent, None
 
 
