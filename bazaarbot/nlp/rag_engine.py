@@ -265,11 +265,18 @@ class RAGEngine:
         context = lc_context or self.retrieve(query)
 
         if is_llm_enabled():
-            llm_response = await call_llm(
-                query=query,
-                context=context,
-                tenant_data=tenant_data or {},
-            )
+            try:
+                llm_response = await call_llm(
+                    query=query,
+                    context=context,
+                    tenant_data=tenant_data or {},
+                )
+            except Exception as _exc:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "LLM call raised unexpectedly: %s — falling back to TF-IDF", _exc
+                )
+                llm_response = None
             if llm_response:
                 return "llm", llm_response
 
