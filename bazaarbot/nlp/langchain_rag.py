@@ -33,7 +33,7 @@ def _get_splitter():
     """Return a cached RecursiveCharacterTextSplitter (lazy import)."""
     global _splitter
     if _splitter is None:
-        from langchain.text_splitter import RecursiveCharacterTextSplitter  # type: ignore[import]
+        from langchain.text_splitter import RecursiveCharacterTextSplitter  # type: ignore[import]  # Optional dependency
 
         _splitter = RecursiveCharacterTextSplitter(
             chunk_size=CHUNK_SIZE,
@@ -62,9 +62,9 @@ def load_knowledge_base(
     global _vectorstore
 
     try:
-        from langchain.schema import Document  # type: ignore[import]
-        from langchain_community.vectorstores import FAISS  # type: ignore[import]
-        from langchain_community.embeddings import HuggingFaceEmbeddings  # type: ignore[import]
+        from langchain.schema import Document  # type: ignore[import]  # Optional dependency
+        from langchain_community.vectorstores import FAISS  # type: ignore[import]  # Optional dependency
+        from langchain_community.embeddings import HuggingFaceEmbeddings  # type: ignore[import]  # Optional dependency
     except ImportError as exc:
         logger.warning(
             "LangChain dependencies not installed, skipping LangChain RAG: %s", exc

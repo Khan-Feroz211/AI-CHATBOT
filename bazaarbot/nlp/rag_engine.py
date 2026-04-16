@@ -261,7 +261,7 @@ class RAGEngine:
 
         lc_context = retrieve_langchain(query)
         # Fall back to TF-IDF snippets when LangChain is not loaded
-        context = lc_context if lc_context else self.retrieve(query)
+        context = lc_context or self.retrieve(query)
 
         if is_llm_enabled():
             llm_response = await call_llm(

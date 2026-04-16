@@ -120,7 +120,7 @@ async def call_llm(
 
     try:
         if Config.LLM_PROVIDER == "openai":
-            from openai import AsyncOpenAI  # type: ignore[import]
+            from openai import AsyncOpenAI  # type: ignore[import]  # Optional dependency
 
             client = AsyncOpenAI(api_key=Config.LLM_API_KEY)
             resp = await client.chat.completions.create(
@@ -133,7 +133,7 @@ async def call_llm(
             return resp.choices[0].message.content
 
         elif Config.LLM_PROVIDER == "groq":
-            from groq import AsyncGroq  # type: ignore[import]
+            from groq import AsyncGroq  # type: ignore[import]  # Optional dependency
 
             client = AsyncGroq(api_key=Config.LLM_API_KEY)
             resp = await client.chat.completions.create(
