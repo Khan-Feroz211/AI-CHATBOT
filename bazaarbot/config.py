@@ -6,35 +6,56 @@ load_dotenv()
 
 
 class Config:
-    # Flask
-    SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
-    DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
-    PORT = int(os.environ.get("PORT", 5000))
+    # ── Flask / server ────────────────────────────────────────────────────
+    SECRET_KEY: str = os.environ.get("SECRET_KEY", "change-me-in-production")
+    DEBUG: bool = os.environ.get("DEBUG", "false").lower() == "true"
+    PORT: int = int(os.environ.get("PORT", 5000))
 
-    # Database
-    DATABASE_PATH = os.environ.get("DATABASE_PATH", "bazaarbot.db")
+    # ── SQLite (legacy — keep alive for existing tests) ───────────────────
+    DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "bazaarbot.db")
 
-    # Twilio / WhatsApp
-    TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
-    TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
-    TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
-    WEBHOOK_VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "")
+    # ── PostgreSQL (async, Day 2+) ────────────────────────────────────────
+    DATABASE_URL: str = os.environ.get(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/bazaarbot",
+    )
+    DATABASE_POOL_SIZE: int = int(os.environ.get("DATABASE_POOL_SIZE", 10))
 
-    # Email (SMTP)
-    SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
-    SMTP_USER = os.environ.get("SMTP_USER", "")
-    SMTP_PASS = os.environ.get("SMTP_PASS", "")
-    NOTIFY_EMAIL = os.environ.get("NOTIFY_EMAIL", "")
+    # ── Redis ─────────────────────────────────────────────────────────────
+    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
-    # Admin
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "bazaar123")
+    # ── JWT auth ──────────────────────────────────────────────────────────
+    JWT_SECRET: str = os.environ.get("JWT_SECRET", "change-this-in-production")
+    JWT_EXPIRE_HOURS: int = int(os.environ.get("JWT_EXPIRE_HOURS", 24))
+    API_KEY_HEADER: str = os.environ.get("API_KEY_HEADER", "X-API-Key")
 
-    # Rate limiting
-    RATE_LIMIT = os.environ.get("RATE_LIMIT", "30 per minute")
+    # ── Super-admin bootstrap credentials ────────────────────────────────
+    SUPERADMIN_EMAIL: str = os.environ.get("SUPERADMIN_EMAIL", "")
+    SUPERADMIN_PASSWORD: str = os.environ.get("SUPERADMIN_PASSWORD", "")
 
-    # Default tenant slug
-    DEFAULT_TENANT = os.environ.get("DEFAULT_TENANT", "default")
+    # ── Twilio / WhatsApp ─────────────────────────────────────────────────
+    TWILIO_ACCOUNT_SID: str = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    TWILIO_AUTH_TOKEN: str = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    TWILIO_WHATSAPP_FROM: str = os.environ.get(
+        "TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886"
+    )
+    WEBHOOK_VERIFY_TOKEN: str = os.environ.get("WEBHOOK_VERIFY_TOKEN", "")
+
+    # ── Email (SMTP) ──────────────────────────────────────────────────────
+    SMTP_HOST: str = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.environ.get("SMTP_PORT", 587))
+    SMTP_USER: str = os.environ.get("SMTP_USER", "")
+    SMTP_PASS: str = os.environ.get("SMTP_PASS", "")
+    NOTIFY_EMAIL: str = os.environ.get("NOTIFY_EMAIL", "")
+
+    # ── Admin dashboard ───────────────────────────────────────────────────
+    ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "bazaar123")
+
+    # ── Rate limiting ─────────────────────────────────────────────────────
+    RATE_LIMIT: str = os.environ.get("RATE_LIMIT", "30 per minute")
+
+    # ── Multi-tenancy ─────────────────────────────────────────────────────
+    DEFAULT_TENANT: str = os.environ.get("DEFAULT_TENANT", "default")
 
 
 config = Config()
