@@ -30,15 +30,23 @@ def main():
         _setup_wizard()
         return
 
-    from bazaarbot.web.app import app
     from bazaarbot.config import config
     port = config.PORT
-    print(f"🚀 BazaarBot starting on port {port}")
+    backend = os.environ.get("APP_BACKEND", "flask").lower()
+
+    print(f"🚀 BazaarBot starting on port {port} [{backend}]")
     print(f"📍 Dashboard : http://localhost:{port}/dashboard")
     print(f"📱 Webhook   : http://localhost:{port}/webhook")
     print(f"💚 Health    : http://localhost:{port}/health")
     print(f"🔌 REST API  : http://localhost:{port}/api/message")
-    app.run(host="0.0.0.0", port=port, debug=config.DEBUG)
+
+    if backend == "fastapi":
+        import uvicorn
+        from bazaarbot.web.fastapi_app import app as fastapi_app
+        uvicorn.run(fastapi_app, host="0.0.0.0", port=port, reload=config.DEBUG)
+    else:
+        from bazaarbot.web.app import app
+        app.run(host="0.0.0.0", port=port, debug=config.DEBUG)
 
 
 if __name__ == "__main__":
