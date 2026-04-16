@@ -9,8 +9,9 @@ import traceback
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -19,9 +20,9 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from twilio.twiml.messaging_response import MessagingResponse
 
-from bazaarbot.config import config
+from bazaarbot.config import config, Config
 from bazaarbot import database as db
-from bazaarbot.bot.intent_router import process_message
+from bazaarbot.bot.intent_router import process_message, process_message_async
 
 _templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -36,8 +37,17 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[_rate_str])
 
 @asynccontextmanager
 async def _lifespan(application: FastAPI):
-    """Run DB initialisation once at startup (FastAPI best practice)."""
+    """Run DB initialisation and optional NLP warm-up at startup."""
     db.init_db()
+
+    # LangChain RAG warm-up (optional, controlled by env flag)
+    from bazaarbot.nlp.langchain_rag import load_knowledge_base
+    if Config.USE_LANGCHAIN_RAG:
+        load_knowledge_base()
+        print("LangChain RAG: loaded")
+    else:
+        print("LangChain RAG: disabled (TF-IDF mode)")
+
     yield
 
 
@@ -360,7 +370,12 @@ async def chat(request: Request):
     if not message:
         return JSONResponse({"response": "Kuch likhein please."})
     try:
-        return JSONResponse({"response": process_message(phone, message, tenant_slug)})
+        if Config.USE_LLM_FALLBACK:
+            reply = await process_message_async(message, phone, tenant_slug,
+                                                channel="web")
+        else:
+            reply = process_message(phone, message, tenant_slug)
+        return JSONResponse({"response": reply})
     except Exception:
         traceback.print_exc()
         return JSONResponse({"response": "Kuch ghalat hua. *menu* likhein."})
@@ -387,7 +402,11 @@ async def api_message(request: Request):
         engine = get_engine()
         engine.load_tenant_docs(tenant_slug)
         intent, _ = engine.answer(message.lower())
-        response = process_message(phone, message, tenant_slug)
+        if Config.USE_LLM_FALLBACK:
+            response = await process_message_async(message, phone, tenant_slug,
+                                                   channel="api")
+        else:
+            response = process_message(phone, message, tenant_slug)
         return JSONResponse({"response": response, "intent": intent})
     except Exception:
         traceback.print_exc()
@@ -426,7 +445,13 @@ async def _webhook_handler(request: Request) -> Response:
         from_number = payload.get("From", "").replace("whatsapp:", "")
         print(f"📨 {from_number}: {incoming}")
 
-        response_text = process_message(from_number, incoming, config.DEFAULT_TENANT)
+        tenant_slug = config.DEFAULT_TENANT
+        if Config.USE_LLM_FALLBACK:
+            response_text = await process_message_async(
+                incoming, from_number, tenant_slug, channel="whatsapp"
+            )
+        else:
+            response_text = process_message(from_number, incoming, tenant_slug)
         resp = MessagingResponse()
         resp.message(response_text)
         return Response(content=str(resp), media_type="text/xml")
@@ -449,6 +474,135 @@ async def webhook(request: Request):
 @limiter.limit("120/minute")
 async def webhook_slash(request: Request):
     return await _webhook_handler(request)
+
+
+# ── NLP diagnostic endpoints ───────────────────────────────────────────────
+
+# Bearer-token extractor (optional — 401 if missing/invalid)
+_bearer_scheme = HTTPBearer()
+
+
+def _require_jwt(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> dict:
+    """FastAPI dependency that validates a Bearer JWT and returns its payload."""
+    from bazaarbot.auth.auth_service import decode_access_token
+    return decode_access_token(credentials.credentials)
+
+
+@app.get("/api/nlp/status")
+async def nlp_status(request: Request):
+    """Return current NLP pipeline configuration.  No auth required."""
+    from bazaarbot.nlp.rag_engine import get_engine, INTENT_PATTERNS
+    from bazaarbot.nlp.langchain_rag import retrieve_langchain as _lc
+    from bazaarbot.nlp import langchain_rag as _lc_mod
+    from bazaarbot.nlp.llm_service import is_llm_enabled
+
+    engine = get_engine()
+
+    # Count knowledge docs available in TF-IDF engine
+    knowledge_doc_count = len(engine._docs) if engine._docs else 0
+
+    # Determine LangChain status by checking module-level vectorstore
+    lc_active = _lc_mod._vectorstore is not None
+
+    return JSONResponse({
+        "tfidf_rag": "active",
+        "langchain_rag": "active" if lc_active else "disabled",
+        "llm_fallback": "active" if is_llm_enabled() else "disabled",
+        "llm_provider": Config.LLM_PROVIDER,
+        "intent_count": len(INTENT_PATTERNS),
+        "knowledge_docs": knowledge_doc_count,
+    })
+
+
+@app.post("/api/nlp/test")
+async def nlp_test(
+    request: Request,
+    _payload: dict = Depends(_require_jwt),
+):
+    """Run the full NLP pipeline on a test query and return diagnostics.
+
+    Body: {"query": str, "tenant_slug": str}
+    Requires a valid Bearer JWT token.
+    """
+    data = await _parse_json(request)
+    query = str(data.get("query", "")).strip()[:500]
+    tenant_slug = str(data.get("tenant_slug", config.DEFAULT_TENANT)).strip()
+    if not query:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="'query' field is required.",
+        )
+
+    from bazaarbot.nlp.rag_engine import get_engine
+    from bazaarbot.nlp.langchain_rag import retrieve_langchain
+    from bazaarbot.nlp.llm_service import is_llm_enabled, call_llm
+
+    engine = get_engine()
+    try:
+        engine.load_tenant_docs(tenant_slug)
+    except Exception:
+        pass
+
+    # TF-IDF scoring
+    intent, confidence = engine._classify_intent_scored(query.lower())
+
+    # Sync TF-IDF response (the existing answer() path)
+    _, tfidf_response = engine.answer(query.lower())
+
+    # LangChain context retrieval
+    langchain_context = retrieve_langchain(query)
+
+    # LLM response (only if enabled and confidence is below threshold)
+    llm_response: Optional[str] = None
+    path_taken = "tfidf"
+
+    if is_llm_enabled() and (
+        confidence < Config.LLM_CONFIDENCE_THRESHOLD or intent == "unknown"
+    ):
+        try:
+            tenant_data = db.get_tenant(tenant_slug) or {}
+            llm_response = await call_llm(
+                query=query,
+                context=langchain_context or engine.retrieve(query),
+                tenant_data=tenant_data,
+            )
+            if llm_response:
+                path_taken = "llm"
+        except Exception as exc:
+            traceback.print_exc()
+
+    if path_taken == "tfidf" and langchain_context:
+        path_taken = "rag"
+
+    # Determine the final response that would be sent to the user
+    if llm_response:
+        final_response = llm_response
+    elif tfidf_response:
+        final_response = tfidf_response
+    elif langchain_context:
+        final_response = (
+            "🤖 *BazaarBot Assistant*\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"{langchain_context[:400]}\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "Aur madad ke liye *menu* likhein."
+        )
+    else:
+        final_response = (
+            "Maafi chahta hoon, samajh nahi aaya. Please dobara likhein."
+        )
+
+    return JSONResponse({
+        "intent": intent,
+        "confidence": round(confidence, 4),
+        "tfidf_response": tfidf_response,
+        "langchain_context": langchain_context,
+        "llm_response": llm_response,
+        "final_response": final_response,
+        "path_taken": path_taken,
+    })
 
 
 # ── Health ─────────────────────────────────────────────────────────────────
