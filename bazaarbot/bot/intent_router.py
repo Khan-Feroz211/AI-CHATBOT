@@ -20,7 +20,7 @@ from bazaarbot.bot.handlers import (
     handle_unknown,
 )
 from bazaarbot.nlp.rag_engine import get_engine
-from bazaarbot.config import config
+from bazaarbot.config import config, Config
 
 _MENU_TRIGGERS = {
     "hi", "hello", "hey", "start", "menu", "salam", "aoa",
@@ -164,3 +164,183 @@ def _route(tenant_slug: str, phone: str,
 
     # ── Fallback ──────────────────────────────────────────────────────────
     return handle_unknown(tenant_slug, phone, rag_response or "")
+
+
+# ── Async router (FastAPI / Day 3+) ──────────────────────────────────────
+
+async def process_message_async(
+    message: str,
+    phone: str,
+    tenant_slug: str,
+    channel: str = "whatsapp",
+) -> str:
+    """Async version of process_message() for FastAPI endpoints.
+
+    Uses async PostgreSQL functions for session, tenant, and message
+    logging.  The NLP engine runs answer_async() when USE_LLM_FALLBACK
+    is enabled so the LLM call doesn't block the event loop.
+
+    Business-logic handlers (handle_stock, handle_sell, etc.) are the
+    same sync helpers used by process_message(); they are called directly
+    since they do not perform long I/O.
+
+    The original sync process_message() is completely unchanged.
+    """
+    import bazaarbot.database_pg as pg
+
+    tenant_slug = tenant_slug or config.DEFAULT_TENANT
+    message = (message or "").strip()
+    lower = message.lower()
+
+    # Inbound log (pg async)
+    await pg.async_log_message(tenant_slug, phone, "inbound", message,
+                                channel=channel)
+
+    # Session and tenant from PostgreSQL
+    session = await pg.async_get_session(tenant_slug, phone)
+    state = session.get("state", "idle")
+    tenant_data: dict = await pg.async_get_tenant(tenant_slug) or {}
+
+    response = await _route_async(
+        tenant_slug, phone, lower, message, state, tenant_data
+    )
+
+    # Outbound log (pg async)
+    await pg.async_log_message(tenant_slug, phone, "outbound", response,
+                                channel=channel)
+    return response
+
+
+def _menu_pg(tenant_data: dict) -> str:
+    """Build main menu from already-fetched tenant dict."""
+    return get_main_menu(tenant_data.get("name", "BazaarBot"))
+
+
+async def _route_async(
+    tenant_slug: str,
+    phone: str,
+    lower: str,
+    original: str,
+    state: str,
+    tenant_data: dict,
+) -> str:
+    """Async counterpart of _route().  Session mutations use pg async."""
+    import bazaarbot.database_pg as pg
+
+    # ── Multi-turn: adding stock ─────────────────────────────────────────
+    if state == "adding_stock":
+        if lower in ("menu", "cancel", "exit"):
+            await pg.async_clear_session(tenant_slug, phone)
+            return _menu_pg(tenant_data)
+        prefix = lower if lower.startswith("add ") else "add product " + original
+        return handle_add_stock(tenant_slug, phone, prefix)
+
+    # ── Multi-turn: placing order ────────────────────────────────────────
+    if state == "placing_order":
+        if lower in ("menu", "cancel", "exit"):
+            await pg.async_clear_session(tenant_slug, phone)
+            return _menu_pg(tenant_data)
+        prefix = lower if lower.startswith("order ") else "order " + original
+        return handle_order_create(tenant_slug, phone, prefix)
+
+    # ── Multi-turn: booking appointment ─────────────────────────────────
+    if state == "booking_appointment":
+        if lower in ("menu", "cancel", "exit"):
+            await pg.async_clear_session(tenant_slug, phone)
+            return _menu_pg(tenant_data)
+        prefix = (
+            lower if lower.startswith("appoint ")
+            else "appoint " + original
+        )
+        return handle_appointment_create(tenant_slug, phone, prefix)
+
+    # ── NLP intent classification ────────────────────────────────────────
+    engine = get_engine()
+    try:
+        engine.load_tenant_docs(tenant_slug)
+    except Exception:
+        pass
+
+    if Config.USE_LLM_FALLBACK:
+        intent, rag_response = await engine.answer_async(
+            lower, tenant_data=tenant_data
+        )
+    else:
+        intent, rag_response = engine.answer(lower)
+
+    # Direct RAG / LLM responses (escalate, unknown-with-snippet, llm)
+    handled_by_router = {
+        "greet", "stock_check", "add_stock", "sell", "order", "payment",
+        "market_finder", "appointment", "transactions", "price", "help",
+    }
+    if rag_response and intent not in handled_by_router:
+        return rag_response
+
+    # ── Greet / menu ─────────────────────────────────────────────────────
+    if lower in _MENU_TRIGGERS or intent == "greet":
+        return _menu_pg(tenant_data)
+
+    # ── Stock ─────────────────────────────────────────────────────────────
+    if lower in ("1", "stock", "maal", "inventory", "check stock") \
+            or intent == "stock_check":
+        return handle_stock(tenant_slug, phone)
+
+    # ── Add stock ─────────────────────────────────────────────────────────
+    if lower.startswith("add "):
+        return handle_add_stock(tenant_slug, phone, lower)
+    if intent == "add_stock":
+        return handle_add_stock_prompt(tenant_slug, phone)
+
+    # ── Sell ──────────────────────────────────────────────────────────────
+    if lower.startswith("sell "):
+        return handle_sell(tenant_slug, phone, lower)
+    if intent == "sell":
+        return "Format: *sell [product] [qty]*\nMisaal: sell Atta 5"
+
+    # ── Update stock ──────────────────────────────────────────────────────
+    if lower.startswith("update "):
+        return handle_update_stock(tenant_slug, phone, lower)
+
+    # ── Order ─────────────────────────────────────────────────────────────
+    if lower in ("2", "order", "naya order") or (
+        intent == "order" and not lower.startswith("order ")
+    ):
+        return handle_order_start(tenant_slug, phone)
+    if lower.startswith("order "):
+        return handle_order_create(tenant_slug, phone, lower)
+
+    # ── Market finder ─────────────────────────────────────────────────────
+    if lower in ("3", "market", "bazaar", "supplier", "mandi") \
+            or intent == "market_finder":
+        return handle_market_finder(tenant_slug, phone, lower)
+    if lower.startswith("market "):
+        return handle_market_finder(tenant_slug, phone, lower)
+
+    # ── Payment ───────────────────────────────────────────────────────────
+    if lower in ("4", "payment", "pay", "easypaisa", "jazzcash") \
+            or intent == "payment":
+        return handle_payment(tenant_slug, phone)
+
+    # ── Appointment ───────────────────────────────────────────────────────
+    if lower in ("5", "appointment", "appoint", "booking") \
+            or intent == "appointment":
+        return handle_appointment_start(tenant_slug, phone)
+    if lower.startswith("appoint "):
+        return handle_appointment_create(tenant_slug, phone, lower)
+    if lower in ("appointments", "my appointments", "meri appointments"):
+        return handle_view_appointments(tenant_slug, phone)
+    if lower.startswith("cancel appoint"):
+        return handle_cancel_appointment(tenant_slug, phone, lower)
+
+    # ── Transactions ──────────────────────────────────────────────────────
+    if lower in ("6", "history", "transactions", "orders") \
+            or intent == "transactions":
+        return handle_transactions(tenant_slug, phone)
+
+    # ── Help ──────────────────────────────────────────────────────────────
+    if lower in ("7", "help", "madad", "?") or intent == "help":
+        return handle_help()
+
+    # ── Fallback ──────────────────────────────────────────────────────────
+    return handle_unknown(tenant_slug, phone, rag_response or "")
+

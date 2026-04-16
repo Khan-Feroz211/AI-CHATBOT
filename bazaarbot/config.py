@@ -61,6 +61,21 @@ class Config:
     USE_LLM_FALLBACK: bool = os.environ.get("USE_LLM_FALLBACK", "false").lower() == "true"
     LLM_PROVIDER: str = os.environ.get("LLM_PROVIDER", "none")  # "openai", "groq", or "none"
     LLM_API_KEY: str = os.environ.get("LLM_API_KEY", "")
+    # Confidence below this threshold triggers LLM fallback
+    LLM_CONFIDENCE_THRESHOLD: float = float(
+        os.environ.get("LLM_CONFIDENCE_THRESHOLD", "0.30")
+    )
+    LLM_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_TOKENS", 300))
+    LLM_TIMEOUT_SECONDS: int = int(os.environ.get("LLM_TIMEOUT_SECONDS", 8))
+
+    # ── LangChain RAG (Day 3+, optional) ─────────────────────────────────
+    # When False: uses original TF-IDF RAG
+    # When True:  uses LangChain + HuggingFace embeddings (FAISS in-memory)
+    USE_LANGCHAIN_RAG: bool = os.environ.get("USE_LANGCHAIN_RAG", "false").lower() == "true"
+    LANGCHAIN_EMBED_MODEL: str = os.environ.get(
+        "LANGCHAIN_EMBED_MODEL",
+        "sentence-transformers/all-MiniLM-L6-v2",
+    )
 
 
 config = Config()
