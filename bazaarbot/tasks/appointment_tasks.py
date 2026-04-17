@@ -49,18 +49,18 @@ def send_appointment_reminder(
         )
         if not appt:
             logger.warning(
-                "send_appointment_reminder: appointment not found "
-                "(id=%d tenant=%s)", appointment_id, tenant_slug,
+                "send_appointment_reminder: appointment not found for tenant=%s",
+                tenant_slug,
             )
             return {"success": False, "reason": "not_found"}
 
         if appt["status"] != "booked":
             logger.info(
-                "send_appointment_reminder: skipping appointment "
-                "(id=%d status=%s tenant=%s)",
-                appointment_id, appt["status"], tenant_slug,
+                "send_appointment_reminder: skipping non-booked appointment "
+                "(status=%s tenant=%s)",
+                appt["status"], tenant_slug,
             )
-            return {"success": False, "reason": "not_found_or_cancelled"}
+            return {"success": False, "reason": "status_not_booked"}
 
         tenant = get_tenant(tenant_slug)
         business_name = tenant["name"] if tenant else tenant_slug
@@ -115,7 +115,7 @@ def send_daily_reminders() -> dict:
     from bazaarbot.models import Appointment
     from sqlalchemy import select
 
-    tomorrow_str = (date.today() + timedelta(days=1)).isoformat()
+    tomorrow_str = (datetime.now(tz=timezone.utc).date() + timedelta(days=1)).isoformat()
 
     async def _get_appointments():
         async with AsyncSessionLocal() as session:

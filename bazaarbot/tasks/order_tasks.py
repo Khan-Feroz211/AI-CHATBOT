@@ -65,7 +65,14 @@ def process_order(
                 "available": product["quantity"],
             }
 
-        unit_price = float(product["sell_price"])
+        try:
+            unit_price = float(product["sell_price"])
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.error(
+                "process_order: invalid sell_price for product '%s' (tenant=%s): %s",
+                product_name, tenant_slug, exc,
+            )
+            return {"success": False, "error": "invalid_product_price"}
 
         # Step 3 — create order record + deduct stock (handled inside create_order)
         order_ref, total = create_order(
