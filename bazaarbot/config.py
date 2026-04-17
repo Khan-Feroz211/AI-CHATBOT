@@ -10,6 +10,7 @@ class Config:
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "change-me-in-production")
     DEBUG: bool = os.environ.get("DEBUG", "false").lower() == "true"
     PORT: int = int(os.environ.get("PORT", 5000))
+    APP_ENV: str = os.environ.get("APP_ENV", "production")
 
     # ── SQLite (legacy — keep alive for existing tests) ───────────────────
     DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "bazaarbot.db")
@@ -86,6 +87,15 @@ class Config:
         "LANGCHAIN_EMBED_MODEL",
         "sentence-transformers/all-MiniLM-L6-v2",
     )
+
+    # ── Telegram (Day 5+) ─────────────────────────────────────────────────
+    # Obtain a bot token from @BotFather on Telegram.
+    # Register the webhook once with setup_webhook() after deploying.
+    TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    # Optional shared secret passed to Telegram's setWebhook(secret_token=…).
+    # Telegram echoes it back in every webhook request header so we can
+    # verify the request is genuine.
+    TELEGRAM_WEBHOOK_SECRET: str = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 
 config = Config()
