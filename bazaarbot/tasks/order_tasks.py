@@ -47,11 +47,17 @@ def process_order(
             phone,
         )
 
-        # Parse the numeric ID from the order reference (e.g. "ORD-42")
+        # Parse the numeric order ID from the reference string (format: "ORD-<id>").
         try:
             order_id = int(order_ref.split("-")[-1])
         except (ValueError, IndexError):
-            order_id = 0
+            logger.error(
+                "process_order: cannot parse order ID from ref '%s' (tenant=%s); "
+                "skipping confirmation email.",
+                order_ref,
+                tenant_slug,
+            )
+            return {"success": True, "order_ref": order_ref, "total": total}
 
         send_order_confirmation.delay(order_id=order_id, tenant_slug=tenant_slug)
 

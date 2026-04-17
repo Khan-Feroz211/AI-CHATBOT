@@ -65,14 +65,13 @@ def send_appointment_reminder(
         )
 
         logger.info(
-            "Appointment reminder queued: id=%d tenant=%s date=%s",
-            appointment_id,
+            "Appointment reminder queued for tenant=%s date=%s",
             tenant_slug,
             apt_date,
         )
         return {"success": True, "appointment_id": appointment_id}
     except Exception as exc:
-        logger.error("send_appointment_reminder failed (id=%d): %s", appointment_id, exc)
+        logger.error("send_appointment_reminder failed for tenant=%s: %s", tenant_slug, exc)
         raise self.retry(exc=exc)
 
 
