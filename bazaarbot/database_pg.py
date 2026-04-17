@@ -693,7 +693,13 @@ def get_recent_messages(tenant_slug: str, limit: int = 30) -> list[dict]:
 
 
 def get_inventory(tenant_slug: str) -> list[dict]:
-    return _run(async_get_inventory(tenant_slug))
+    from bazaarbot.cache import get_cached_inventory, set_cached_inventory
+    cached = get_cached_inventory(tenant_slug)
+    if cached is not None:
+        return cached
+    result = _run(async_get_inventory(tenant_slug))
+    set_cached_inventory(tenant_slug, result)
+    return result
 
 
 def get_product(tenant_slug: str, name: str) -> dict | None:
@@ -717,10 +723,14 @@ def upsert_product(
             buy_price, sell_price, reorder_level, supplier,
         )
     )
+    from bazaarbot.cache import invalidate_inventory_cache
+    invalidate_inventory_cache(tenant_slug)
 
 
 def update_stock(tenant_slug: str, product_name: str, delta: int) -> None:
     _run(async_update_stock(tenant_slug, product_name, delta))
+    from bazaarbot.cache import invalidate_inventory_cache
+    invalidate_inventory_cache(tenant_slug)
 
 
 def get_low_stock(tenant_slug: str) -> list[dict]:
@@ -735,11 +745,16 @@ def create_order(
     unit_price: float,
     payment_method: str = "pending",
 ) -> tuple[str, float]:
-    return _run(
+    result = _run(
         async_create_order(
             tenant_slug, phone, product_name, quantity, unit_price, payment_method
         )
     )
+    # async_create_order calls async_update_stock which modifies stock;
+    # bust the inventory cache so the next read reflects the deduction.
+    from bazaarbot.cache import invalidate_inventory_cache
+    invalidate_inventory_cache(tenant_slug)
+    return result
 
 
 def get_orders(
