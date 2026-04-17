@@ -1,0 +1,114 @@
+version: "3.9"
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bazaarbot_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-bazaarbot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bazaarbot_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly no
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bazaarbot_app
+    restart: unless-stopped
+    env_file: .env.docker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-bazaarbot}
+      REDIS_URL: redis://redis:6379/0
+      APP_BACKEND: fastapi
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn bazaarbot.web.fastapi_app:app
+             --host 0.0.0.0 --port 8000
+             --workers 2"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bazaarbot_celery
+    restart: unless-stopped
+    env_file: .env.docker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-bazaarbot}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    command: >
+      celery -A bazaarbot.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=email,orders,alerts,appointments
+      --hostname=worker@%h
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bazaarbot_flower
+    restart: unless-stopped
+    env_file: .env.docker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery-worker
+    command: >
+      celery -A bazaarbot.celery_app flower
+      --port=5555
+      --broker=redis://redis:6379/0
+
+volumes:
+  postgres_data:

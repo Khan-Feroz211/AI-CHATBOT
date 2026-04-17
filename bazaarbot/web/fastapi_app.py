@@ -3,6 +3,7 @@
 Mirrors every route in bazaarbot/web/app.py (Flask).
 Run via APP_BACKEND=fastapi in .env / environment.
 """
+import logging
 import os
 import re
 import traceback
@@ -23,6 +24,8 @@ from twilio.twiml.messaging_response import MessagingResponse
 from bazaarbot.config import config, Config
 from bazaarbot import database as db
 from bazaarbot.bot.intent_router import process_message, process_message_async
+
+logger = logging.getLogger(__name__)
 
 _templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -215,9 +218,16 @@ async def inventory(request: Request):
     if redir:
         return redir
     tenant_slug = request.session.get("tenant", config.DEFAULT_TENANT)
+    from bazaarbot.cache import get_cached_inventory, set_cached_inventory
+    cached = get_cached_inventory(tenant_slug)
+    if cached is not None:
+        items = cached
+    else:
+        items = db.get_inventory(tenant_slug)
+        set_cached_inventory(tenant_slug, items)
     return _tmpl(
         "inventory.html", request,
-        items=db.get_inventory(tenant_slug),
+        items=items,
         low_stock=db.get_low_stock(tenant_slug),
         tenant_slug=tenant_slug,
     )
@@ -242,6 +252,11 @@ async def inventory_save(request: Request):
             reorder_level=int(form.get("reorder_level", 10)),
             supplier=str(form.get("supplier", "")),
         )
+        # upsert_product already busts the cache via database_pg shim,
+        # but we also bust here for the case where the FastAPI route
+        # bypasses the shim in a future refactor.
+        from bazaarbot.cache import invalidate_inventory_cache
+        invalidate_inventory_cache(tenant_slug)
         _flash(request, "Product save ho gaya.", "success")
     except Exception as exc:
         _flash(request, f"Error: {exc}", "error")
@@ -446,6 +461,53 @@ async def _webhook_handler(request: Request) -> Response:
         print(f"📨 {from_number}: {incoming}")
 
         tenant_slug = config.DEFAULT_TENANT
+        lower = incoming.lower().strip()
+
+        # ── Fast-path: direct order command → offload to Celery worker ──────
+        # Matches "order <product name> <qty>" sent directly (not via multi-turn
+        # session).  Celery task handles product lookup, stock validation, DB
+        # write, and confirmation email, so the webhook returns immediately.
+        if lower.startswith("order "):
+            parts = lower.split()
+            if len(parts) >= 3:
+                try:
+                    quantity = int(parts[-1])
+                    product_name = " ".join(parts[1:-1]).title()
+                except ValueError:
+                    # Last token is not a number — fall through to normal handler
+                    product_name = ""
+                    quantity = 0
+                if product_name and quantity > 0:
+                    from bazaarbot.tasks.order_tasks import process_order
+                    process_order.delay(
+                        tenant_slug,
+                        from_number,
+                        product_name,
+                        quantity,
+                        "pending",
+                    )
+                    logger.info(
+                        "Order task queued for tenant=%s product='%s' qty=%d",
+                        tenant_slug, product_name, quantity,
+                    )
+                    resp = MessagingResponse()
+                    resp.message(
+                        "✅ Aapka order process ho raha hai!\n"
+                        "Thodi der mein confirm message milega.\n"
+                        "*menu* likhein waapis jaane ke liye."
+                    )
+                    return Response(content=str(resp), media_type="text/xml")
+                else:
+                    # Parsing failed — return a helpful format hint
+                    resp = MessagingResponse()
+                    resp.message(
+                        "⚠️ Order format galat hai.\n"
+                        "Sahi format: *order [product] [quantity]*\n"
+                        "Misaal: order Atta 5"
+                    )
+                    return Response(content=str(resp), media_type="text/xml")
+
+        # ── Default path: synchronous intent router ───────────────────────
         if Config.USE_LLM_FALLBACK:
             response_text = await process_message_async(
                 incoming, from_number, tenant_slug, channel="whatsapp"
@@ -607,6 +669,58 @@ async def nlp_test(
 
 # ── Health ─────────────────────────────────────────────────────────────────
 
+def _check_celery_workers() -> dict:
+    """Inspect connected Celery workers with a short timeout.
+
+    Returns ``{"status": "ok", "workers": N}`` when at least one worker
+    is online, ``{"status": "no_workers", "workers": 0}`` when the broker
+    is reachable but idle, or ``{"status": "unavailable"}`` on any error.
+    """
+    try:
+        from bazaarbot.celery_app import celery as _celery
+        active = _celery.control.inspect(timeout=2.0).active()
+        if active:
+            return {"status": "ok", "workers": len(active)}
+        return {"status": "no_workers", "workers": 0}
+    except Exception:
+        return {"status": "unavailable"}
+
+
 @app.get("/health")
 async def health(request: Request):
-    return JSONResponse({"status": "ok", "service": "BazaarBot", "version": "1.0.0"})
+    from bazaarbot.cache import health_check as redis_health
+    return JSONResponse({
+        "status":   "ok",
+        "service":  "BazaarBot",
+        "version":  "1.0.0",
+        "redis":    redis_health(),
+        "celery":   _check_celery_workers(),
+    })
+
+
+# ── Task status ────────────────────────────────────────────────────────────
+
+@app.get("/api/tasks/status/{task_id}")
+async def task_status(request: Request, task_id: str):
+    """Return the current status of a Celery task.
+
+    No authentication required — callers receive the task's status string
+    and, once complete, its serialised result.
+
+    ``status`` values mirror Celery's AsyncResult: ``PENDING``,
+    ``STARTED``, ``SUCCESS``, ``FAILURE``, ``RETRY``, ``REVOKED``.
+    """
+    try:
+        from celery.result import AsyncResult
+        result = AsyncResult(task_id)
+        return JSONResponse({
+            "task_id": task_id,
+            "status":  result.status,
+            "result":  result.result if result.ready() else None,
+        })
+    except Exception as exc:
+        logger.warning("task_status(%s) error: %s", task_id, exc)
+        return JSONResponse(
+            {"task_id": task_id, "status": "UNKNOWN", "result": None},
+            status_code=500,
+        )
