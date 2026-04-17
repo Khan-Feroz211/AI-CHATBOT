@@ -1,10 +1,10 @@
 """Async appointment reminder tasks for BazaarBot.
 
 Appointment reminders are dispatched from the Celery 'appointments' queue
-so that SMTP I/O never blocks the webhook handler.
+so that Twilio API latency never blocks the webhook handler.
 """
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from bazaarbot.celery_app import celery
 
@@ -19,59 +19,82 @@ logger = logging.getLogger(__name__)
 )
 def send_appointment_reminder(
     self,
-    tenant_slug: str,
     appointment_id: int,
-    customer_phone: str,
-    customer_name: str,
-    apt_date: str,
-    apt_time: str,
-    purpose: str,
+    tenant_slug: str,
 ) -> dict:
-    """Send a 24-hour reminder email for a single appointment.
+    """Send a WhatsApp reminder for a specific upcoming appointment.
 
-    The reminder is addressed to the tenant's notification email because
-    BazaarBot stores the customer's *phone* number, not their email.
-    Retries up to 3 times (60-second delay) on failure.
+    Looks up the appointment in the database.  If the appointment is not
+    found or has already been cancelled, the task returns early without
+    sending a message.
 
-    Returns ``{"success": bool, "appointment_id": int}``.
+    Message template (Roman Urdu + English):
+
+        "Assalam o Alaikum <name>!
+         Reminder: Aapki appointment kal <time> baje hai <business> mein.
+         Kaam: <purpose>
+         Confirm karne ke liye 'CONFIRM' likhein ya cancel ke liye 'CANCEL'."
+
+    Retries up to 3 times (60-second delay) on Twilio failures.
+    Returns ``{"success": bool, "appointment_id": int, "sent_to": phone}``.
     """
     try:
-        from bazaarbot.database_pg import get_tenant
-        from bazaarbot.tasks.email_tasks import send_notification_email
+        from bazaarbot.database_pg import get_appointments, get_tenant
+        from bazaarbot.tasks.alert_tasks import send_whatsapp_alert
+
+        appointments = get_appointments(tenant_slug, upcoming_only=False, limit=200)
+        appt = next(
+            (a for a in appointments if a["id"] == appointment_id),
+            None,
+        )
+        if not appt:
+            logger.warning(
+                "send_appointment_reminder: appointment not found "
+                "(id=%d tenant=%s)", appointment_id, tenant_slug,
+            )
+            return {"success": False, "reason": "not_found"}
+
+        if appt["status"] != "booked":
+            logger.info(
+                "send_appointment_reminder: skipping appointment "
+                "(id=%d status=%s tenant=%s)",
+                appointment_id, appt["status"], tenant_slug,
+            )
+            return {"success": False, "reason": "not_found_or_cancelled"}
 
         tenant = get_tenant(tenant_slug)
-        if not tenant or not tenant.get("notify_email"):
-            logger.warning(
-                "send_appointment_reminder: no notify_email for tenant %s", tenant_slug
-            )
-            return {"success": False, "reason": "no_notify_email"}
+        business_name = tenant["name"] if tenant else tenant_slug
+        customer = appt.get("customer_name") or appt.get("phone", "")
 
-        body = (
-            f"Appointment Reminder \u2014 {tenant['name']}\n\n"
-            f"Kal ka appointment yaad dilana tha:\n\n"
-            f"Customer: {customer_name or customer_phone}\n"
-            f"Phone: {customer_phone}\n"
-            f"Date: {apt_date}\n"
-            f"Time: {apt_time}\n"
-            f"Purpose: {purpose or 'Business visit'}\n\n"
-            f"\u2014 BazaarBot"
+        message = (
+            f"Assalam o Alaikum {customer}!\n\n"
+            f"Reminder: Aapki appointment kal "
+            f"{appt['appointment_time']} baje hai "
+            f"{business_name} mein.\n"
+            f"Kaam: {appt.get('purpose') or 'Business visit'}\n\n"
+            f"Confirm karne ke liye 'CONFIRM' likhein "
+            f"ya cancel ke liye 'CANCEL'."
         )
 
-        send_notification_email.delay(
-            to_email=tenant["notify_email"],
-            subject=f"Appointment Reminder \u2014 {apt_date} {apt_time}",
-            body=body,
+        send_whatsapp_alert.delay(
+            to_number=appt["phone"],
+            message=message,
             tenant_slug=tenant_slug,
         )
 
         logger.info(
-            "Appointment reminder queued for tenant=%s date=%s",
-            tenant_slug,
-            apt_date,
+            "send_appointment_reminder: queued for tenant=%s date=%s",
+            tenant_slug, appt.get("appointment_date"),
         )
-        return {"success": True, "appointment_id": appointment_id}
+        return {
+            "success": True,
+            "appointment_id": appointment_id,
+            "sent_to": appt["phone"],
+        }
     except Exception as exc:
-        logger.error("send_appointment_reminder failed for tenant=%s: %s", tenant_slug, exc)
+        logger.error(
+            "send_appointment_reminder failed (tenant=%s): %s", tenant_slug, exc,
+        )
         raise self.retry(exc=exc)
 
 
@@ -79,42 +102,40 @@ def send_appointment_reminder(
     name="bazaarbot.tasks.appointment_tasks.send_daily_reminders",
 )
 def send_daily_reminders() -> dict:
-    """Dispatch reminder emails for all appointments scheduled for tomorrow.
+    """Dispatch WhatsApp reminders for all appointments scheduled for tomorrow.
 
-    Scheduled daily at 08:00 PKT by Celery Beat.  Iterates all active
-    tenants and fetches their upcoming appointments for the next calendar
-    day, then fires individual :func:`send_appointment_reminder` sub-tasks.
+    Scheduled daily at 08:00 PKT by Celery Beat.  Queries the
+    ``appointments`` table directly (via the async session) for all
+    ``booked`` appointments whose date equals tomorrow, then fires an
+    individual :func:`send_appointment_reminder` sub-task for each one.
 
-    Returns a summary of how many reminders were dispatched.
+    Returns the number of reminders queued and the target date.
     """
-    from bazaarbot.database_pg import get_appointments, list_tenants
+    from bazaarbot.database_pg import _run, AsyncSessionLocal
+    from bazaarbot.models import Appointment
+    from sqlalchemy import select
 
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
-    tenants = list_tenants()
-    active = [t for t in tenants if t.get("is_active", True)]
+    tomorrow_str = (date.today() + timedelta(days=1)).isoformat()
 
-    total_sent = 0
-    for tenant in active:
-        tenant_slug = tenant["slug"]
-        # Fetch all upcoming appointments and filter for tomorrow
-        appointments = get_appointments(tenant_slug, upcoming_only=True, limit=100)
-        tomorrow_apts = [a for a in appointments if a.get("appointment_date") == tomorrow]
-
-        for apt in tomorrow_apts:
-            send_appointment_reminder.delay(
-                tenant_slug=tenant_slug,
-                appointment_id=apt["id"],
-                customer_phone=apt.get("phone", ""),
-                customer_name=apt.get("customer_name", ""),
-                apt_date=apt.get("appointment_date", ""),
-                apt_time=apt.get("appointment_time", ""),
-                purpose=apt.get("purpose", ""),
+    async def _get_appointments():
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Appointment).where(
+                    Appointment.appointment_date == tomorrow_str,
+                    Appointment.status == "booked",
+                )
             )
-            total_sent += 1
+            return result.scalars().all()
+
+    appointments = _run(_get_appointments())
+    sent = 0
+    for appt in appointments:
+        send_appointment_reminder.delay(appt.id, appt.tenant_slug)
+        sent += 1
 
     logger.info(
-        "send_daily_reminders: dispatched %d reminders for %s",
-        total_sent,
-        tomorrow,
+        "send_daily_reminders: queued %d reminders for %s",
+        sent, tomorrow_str,
     )
-    return {"success": True, "reminders_sent": total_sent, "date": tomorrow}
+    return {"reminders_queued": sent, "date": tomorrow_str}
+
