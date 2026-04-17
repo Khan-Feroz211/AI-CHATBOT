@@ -22,7 +22,17 @@ class Config:
     DATABASE_POOL_SIZE: int = int(os.environ.get("DATABASE_POOL_SIZE", 10))
 
     # ── Redis ─────────────────────────────────────────────────────────────
-    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+    # ── Celery ────────────────────────────────────────────────────────────
+    # Broker defaults to REDIS_URL when empty
+    CELERY_BROKER_URL: str = os.environ.get("CELERY_BROKER_URL", "")
+    # Result backend defaults to REDIS_URL when empty
+    CELERY_RESULT_BACKEND: str = os.environ.get("CELERY_RESULT_BACKEND", "")
+    # Set True in tests — runs tasks synchronously (no worker needed)
+    CELERY_TASK_ALWAYS_EAGER: bool = (
+        os.environ.get("CELERY_TASK_ALWAYS_EAGER", "false").lower() == "true"
+    )
 
     # ── JWT auth ──────────────────────────────────────────────────────────
     JWT_SECRET: str = os.environ.get("JWT_SECRET", "change-this-in-production")
