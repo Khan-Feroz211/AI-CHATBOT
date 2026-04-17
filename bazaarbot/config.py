@@ -10,6 +10,7 @@ class Config:
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "change-me-in-production")
     DEBUG: bool = os.environ.get("DEBUG", "false").lower() == "true"
     PORT: int = int(os.environ.get("PORT", 5000))
+    APP_ENV: str = os.environ.get("APP_ENV", "production")
 
     # ── SQLite (legacy — keep alive for existing tests) ───────────────────
     DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "bazaarbot.db")
