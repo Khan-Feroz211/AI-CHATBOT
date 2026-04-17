@@ -57,8 +57,8 @@ def send_appointment_reminder(
         if appt["status"] != "booked":
             logger.info(
                 "send_appointment_reminder: skipping non-booked appointment "
-                "(status=%s tenant=%s)",
-                appt["status"], tenant_slug,
+                "for tenant=%s",
+                tenant_slug,
             )
             return {"success": False, "reason": "status_not_booked"}
 
@@ -83,8 +83,8 @@ def send_appointment_reminder(
         )
 
         logger.info(
-            "send_appointment_reminder: queued for tenant=%s date=%s",
-            tenant_slug, appt.get("appointment_date"),
+            "send_appointment_reminder: queued for tenant=%s",
+            tenant_slug,
         )
         return {
             "success": True,

@@ -181,10 +181,12 @@ def health_check() -> dict:
     """Ping Redis and return a status dict.
 
     Returns ``{"status": "ok"}`` when reachable, or
-    ``{"status": "error", "error": "<message>"}`` when not.
+    ``{"status": "error"}`` when not (exception detail is logged, not
+    returned, to avoid leaking internal information to callers).
     """
     try:
         get_redis().ping()
         return {"status": "ok"}
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        logger.warning("Redis health check failed: %s", exc)
+        return {"status": "error"}

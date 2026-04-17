@@ -474,8 +474,9 @@ async def _webhook_handler(request: Request) -> Response:
                     quantity = int(parts[-1])
                     product_name = " ".join(parts[1:-1]).title()
                 except ValueError:
-                    quantity = 0
+                    # Last token is not a number — fall through to normal handler
                     product_name = ""
+                    quantity = 0
                 if product_name and quantity > 0:
                     from bazaarbot.tasks.order_tasks import process_order
                     process_order.delay(
@@ -494,6 +495,15 @@ async def _webhook_handler(request: Request) -> Response:
                         "✅ Aapka order process ho raha hai!\n"
                         "Thodi der mein confirm message milega.\n"
                         "*menu* likhein waapis jaane ke liye."
+                    )
+                    return Response(content=str(resp), media_type="text/xml")
+                else:
+                    # Parsing failed — return a helpful format hint
+                    resp = MessagingResponse()
+                    resp.message(
+                        "⚠️ Order format galat hai.\n"
+                        "Sahi format: *order [product] [quantity]*\n"
+                        "Misaal: order Atta 5"
                     )
                     return Response(content=str(resp), media_type="text/xml")
 
