@@ -88,5 +88,14 @@ class Config:
         "sentence-transformers/all-MiniLM-L6-v2",
     )
 
+    # ── Telegram (Day 5+) ─────────────────────────────────────────────────
+    # Obtain a bot token from @BotFather on Telegram.
+    # Register the webhook once with setup_webhook() after deploying.
+    TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    # Optional shared secret passed to Telegram's setWebhook(secret_token=…).
+    # Telegram echoes it back in every webhook request header so we can
+    # verify the request is genuine.
+    TELEGRAM_WEBHOOK_SECRET: str = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+
 
 config = Config()
