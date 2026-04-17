@@ -6,6 +6,7 @@ Run via APP_BACKEND=fastapi in .env / environment.
 import logging
 import os
 import re
+import json
 import traceback
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -24,6 +25,9 @@ from twilio.twiml.messaging_response import MessagingResponse
 from bazaarbot.config import config, Config
 from bazaarbot import database as db
 from bazaarbot.bot.intent_router import process_message, process_message_async
+from bazaarbot.channels.base import ChannelType, get_channel, CHANNEL_REGISTRY
+from bazaarbot.channels import whatsapp, web_channel, telegram_channel  # noqa: F401 — trigger registration
+from bazaarbot.bot.channel_router import handle_channel_message
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +151,17 @@ async def _parse_json(request: Request) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _tenant_from_whatsapp_number(to_number: str) -> str:
+    """Map a Twilio 'To' WhatsApp number to a tenant slug.
+
+    ``to_number`` is the ``To`` field from Twilio's webhook form data,
+    e.g. ``whatsapp:+14155238886``.  In a multi-tenant setup each Twilio
+    number would have its own tenant; for now we resolve to the default
+    tenant.  Extend with a DB lookup when per-number routing is needed.
+    """
+    return config.DEFAULT_TENANT
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────
@@ -456,12 +471,21 @@ async def _webhook_handler(request: Request) -> Response:
         if request.method == "GET" and not payload.get("Body"):
             return Response(content="OK")
 
-        incoming = _extract_text(payload)[:1000]
-        from_number = payload.get("From", "").replace("whatsapp:", "")
-        print(f"📨 {from_number}: {incoming}")
+        # ── POST: parse via channel abstraction ───────────────────────────
+        whatsapp_ch = get_channel(ChannelType.WHATSAPP)
+        tenant_slug = _tenant_from_whatsapp_number(payload.get("To", ""))
 
-        tenant_slug = config.DEFAULT_TENANT
-        lower = incoming.lower().strip()
+        msg = whatsapp_ch.parse_incoming(payload, tenant_slug)
+        if not msg:
+            # Delivery receipts, status callbacks, etc. — acknowledge silently
+            return Response(
+                content='<?xml version=\'1.0\'?><Response></Response>',
+                media_type="text/xml",
+            )
+
+        logger.info("WhatsApp inbound %s: %s", msg.from_number, msg.text[:80])
+
+        lower = msg.text.lower().strip()
 
         # ── Fast-path: direct order command → offload to Celery worker ──────
         # Matches "order <product name> <qty>" sent directly (not via multi-turn
@@ -474,14 +498,13 @@ async def _webhook_handler(request: Request) -> Response:
                     quantity = int(parts[-1])
                     product_name = " ".join(parts[1:-1]).title()
                 except ValueError:
-                    # Last token is not a number — fall through to normal handler
                     product_name = ""
                     quantity = 0
                 if product_name and quantity > 0:
                     from bazaarbot.tasks.order_tasks import process_order
                     process_order.delay(
                         tenant_slug,
-                        from_number,
+                        msg.from_number,
                         product_name,
                         quantity,
                         "pending",
@@ -498,7 +521,6 @@ async def _webhook_handler(request: Request) -> Response:
                     )
                     return Response(content=str(resp), media_type="text/xml")
                 else:
-                    # Parsing failed — return a helpful format hint
                     resp = MessagingResponse()
                     resp.message(
                         "⚠️ Order format galat hai.\n"
@@ -507,16 +529,13 @@ async def _webhook_handler(request: Request) -> Response:
                     )
                     return Response(content=str(resp), media_type="text/xml")
 
-        # ── Default path: synchronous intent router ───────────────────────
-        if Config.USE_LLM_FALLBACK:
-            response_text = await process_message_async(
-                incoming, from_number, tenant_slug, channel="whatsapp"
-            )
-        else:
-            response_text = process_message(from_number, incoming, tenant_slug)
-        resp = MessagingResponse()
-        resp.message(response_text)
-        return Response(content=str(resp), media_type="text/xml")
+        # ── Default path: route through channel router ────────────────────
+        # channel.send_message() delivers via Twilio API; return empty TwiML.
+        await handle_channel_message(msg)
+        return Response(
+            content='<?xml version=\'1.0\'?><Response></Response>',
+            media_type="text/xml",
+        )
 
     except Exception as exc:
         print(f"❌ Webhook error: {exc}")
@@ -536,6 +555,75 @@ async def webhook(request: Request):
 @limiter.limit("120/minute")
 async def webhook_slash(request: Request):
     return await _webhook_handler(request)
+
+
+# ── Telegram webhook ───────────────────────────────────────────────────────
+
+@app.post("/webhook/telegram/{slug}")
+@limiter.limit("120/minute")
+async def telegram_webhook(request: Request, slug: str):
+    """Receive Telegram Bot API webhook updates.
+
+    Telegram posts a JSON update object to this URL for every message.
+    The ``{slug}`` path parameter identifies the tenant so a single
+    BazaarBot deployment can serve multiple Telegram bots.
+
+    Webhook registration (run once after deploying):
+        await TelegramChannel().setup_webhook(
+            f"https://your-domain.com/webhook/telegram/{slug}",
+            secret_token=config.TELEGRAM_WEBHOOK_SECRET,
+        )
+
+    Security: when ``TELEGRAM_WEBHOOK_SECRET`` is set, the
+    ``X-Telegram-Bot-Api-Secret-Token`` header in every request is
+    verified by ``TelegramChannel.verify_webhook`` before processing.
+
+    Always returns HTTP 200 — Telegram retries on non-2xx responses.
+    """
+    # Validate slug early to reject obviously invalid requests
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{1,50}", slug):
+        return Response(content="Bad request", status_code=400)
+
+    try:
+        # Read the raw body once so we can verify and parse from the same bytes
+        body = await request.body()
+
+        telegram_ch = get_channel(ChannelType.TELEGRAM)
+        if not telegram_ch:
+            logger.error("TelegramChannel not registered in CHANNEL_REGISTRY")
+            return Response(content="OK")
+
+        # Verify the webhook secret token (constant-time comparison)
+        if not telegram_ch.verify_webhook(
+            dict(request.headers), body, config.TELEGRAM_WEBHOOK_SECRET
+        ):
+            logger.warning("Telegram webhook secret mismatch for slug=%s", slug)
+            return Response(content="forbidden", status_code=403)
+
+        # Parse JSON body
+        try:
+            payload = json.loads(body)
+            if not isinstance(payload, dict):
+                return Response(content="OK")
+        except Exception:
+            return Response(content="OK")
+
+        # Normalise to ChannelMessage (returns None for non-text updates)
+        msg = telegram_ch.parse_incoming(payload, slug)
+        if not msg:
+            return Response(content="OK")
+
+        logger.info("Telegram inbound %s [%s]: %s", msg.from_number, slug, msg.text[:80])
+
+        # Route through the unified channel handler
+        await handle_channel_message(msg)
+        return Response(content="OK")
+
+    except Exception as exc:
+        logger.error("Telegram webhook error for slug=%s: %s", slug, exc)
+        traceback.print_exc()
+        # Always return 200 — a non-2xx response causes Telegram to retry
+        return Response(content="OK")
 
 
 # ── NLP diagnostic endpoints ───────────────────────────────────────────────

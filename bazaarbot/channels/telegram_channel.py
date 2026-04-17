@@ -88,7 +88,10 @@ class TelegramChannel(BaseChannel):
         if not text:
             return None
 
-        chat_id = str(message["chat"]["id"])
+        chat = message.get("chat")
+        if not chat or "id" not in chat:
+            return None
+        chat_id = str(chat["id"])
 
         # Normalise bot commands to intent-router-friendly strings
         if text.startswith("/"):
@@ -99,7 +102,7 @@ class TelegramChannel(BaseChannel):
                 text = _COMMAND_MAP[command]
             elif command == "/order":
                 # "/order rice 5" → "order rice 5"; bare "/order" → "order"
-                remainder = text[len("/order"):].strip()
+                remainder = text.removeprefix("/order").strip()
                 text = f"order {remainder}".strip()
             else:
                 # Unknown command — strip slash and forward to NLP
