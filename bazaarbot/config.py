@@ -97,5 +97,23 @@ class Config:
     # verify the request is genuine.
     TELEGRAM_WEBHOOK_SECRET: str = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
+    # ── JazzCash (Day 7 — SaaS billing) ───────────────────────────────────
+    # Credentials from the JazzCash merchant portal.
+    # Sandbox: https://sandbox.jazzcash.com.pk
+    # Live:    https://payments.jazzcash.com.pk
+    JAZZCASH_MERCHANT_ID: str = os.environ.get("JAZZCASH_MERCHANT_ID", "")
+    JAZZCASH_PASSWORD: str = os.environ.get("JAZZCASH_PASSWORD", "")
+    JAZZCASH_INTEGRITY_SALT: str = os.environ.get("JAZZCASH_INTEGRITY_SALT", "")
+
+    # ── Easypaisa (Day 7 — SaaS billing) ──────────────────────────────────
+    # Credentials from the Easypaisa merchant/developer portal.
+    # Both sandbox and live use https://easypaisa.com.pk/easypay/Index
+    EASYPAISA_STORE_ID: str = os.environ.get("EASYPAISA_STORE_ID", "")
+    EASYPAISA_HASH_KEY: str = os.environ.get("EASYPAISA_HASH_KEY", "")
+    EASYPAISA_NTN: str = os.environ.get("EASYPAISA_NTN", "")
+
+    # ── Frontend URL (used in payment return/callback URLs) ────────────────
+    FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
 
 config = Config()
