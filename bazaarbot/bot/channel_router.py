@@ -47,8 +47,26 @@ async def handle_channel_message(
     # Show typing animation while we process (Telegram; no-op elsewhere)
     await channel.send_typing_indicator(msg.from_number)
 
-    # Route through intent engine
+    # Check whether the tenant's subscription plan permits LLM fallback.
+    # Business and Pro plans have llm_enabled=True; Starter and free-trial
+    # tenants fall back to the TF-IDF engine regardless of USE_LLM_FALLBACK.
+    llm_allowed = False
     if Config.USE_LLM_FALLBACK:
+        try:
+            from bazaarbot.billing.middleware import check_llm_access
+            from bazaarbot.database_pg import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as _db:
+                llm_allowed = await check_llm_access(msg.tenant_slug, _db)
+        except Exception as _exc:
+            logger.warning(
+                "LLM access check failed for tenant=%s: %s — falling back to TF-IDF",
+                msg.tenant_slug,
+                _exc,
+            )
+
+    # Route through intent engine
+    if Config.USE_LLM_FALLBACK and llm_allowed:
         reply = await process_message_async(
             message=msg.text,
             phone=msg.from_number,
