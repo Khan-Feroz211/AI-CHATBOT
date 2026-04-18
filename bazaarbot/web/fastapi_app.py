@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Resp
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.sessions import SessionMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -28,6 +29,12 @@ from bazaarbot.bot.intent_router import process_message, process_message_async
 from bazaarbot.channels.base import ChannelType, get_channel, CHANNEL_REGISTRY
 from bazaarbot.channels import whatsapp, web_channel, telegram_channel  # noqa: F401 — trigger registration
 from bazaarbot.bot.channel_router import handle_channel_message
+from bazaarbot.billing.middleware import (
+    enforce_message_limit,
+    increment_message_count,
+    get_db as billing_get_db,
+)
+from bazaarbot.database_pg import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +70,10 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+# ── Billing API router ────────────────────────────────────────────────────
+from bazaarbot.web.billing_routes import router as billing_router  # noqa: E402
+app.include_router(billing_router)
 
 templates = Jinja2Templates(directory=_templates_dir)
 
@@ -485,6 +496,29 @@ async def _webhook_handler(request: Request) -> Response:
 
         logger.info("WhatsApp inbound %s: %s", msg.from_number, msg.text[:80])
 
+        # ── Billing enforcement ───────────────────────────────────────────
+        # Raise HTTP 429 if the monthly message quota is exhausted and
+        # return a TwiML upgrade prompt instead of processing the message.
+        try:
+            async with AsyncSessionLocal() as _billing_db:
+                await enforce_message_limit(tenant_slug, "whatsapp", _billing_db)
+        except HTTPException as _billing_exc:
+            if _billing_exc.status_code == 429:
+                _detail = (
+                    _billing_exc.detail
+                    if isinstance(_billing_exc.detail, dict)
+                    else {}
+                )
+                _upgrade_msg = _detail.get(
+                    "message",
+                    f"Aapka message quota khatam ho gaya. "
+                    f"Plan upgrade karein: {Config.FRONTEND_URL}/billing",
+                )
+                _twiml = MessagingResponse()
+                _twiml.message(_upgrade_msg)
+                return Response(content=str(_twiml), media_type="text/xml")
+            raise  # Re-raise unexpected billing exceptions
+
         lower = msg.text.lower().strip()
 
         # ── Fast-path: direct order command → offload to Celery worker ──────
@@ -513,6 +547,13 @@ async def _webhook_handler(request: Request) -> Response:
                         "Order task queued for tenant=%s product='%s' qty=%d",
                         tenant_slug, product_name, quantity,
                     )
+                    # Increment counter — message was received and acted on.
+                    try:
+                        async with AsyncSessionLocal() as _cnt_db:
+                            await increment_message_count(tenant_slug, _cnt_db)
+                            await _cnt_db.commit()
+                    except Exception as _cnt_exc:
+                        logger.warning("Failed to increment message count: %s", _cnt_exc)
                     resp = MessagingResponse()
                     resp.message(
                         "✅ Aapka order process ho raha hai!\n"
@@ -532,6 +573,15 @@ async def _webhook_handler(request: Request) -> Response:
         # ── Default path: route through channel router ────────────────────
         # channel.send_message() delivers via Twilio API; return empty TwiML.
         await handle_channel_message(msg)
+
+        # Increment message counter after successful processing.
+        try:
+            async with AsyncSessionLocal() as _cnt_db:
+                await increment_message_count(tenant_slug, _cnt_db)
+                await _cnt_db.commit()
+        except Exception as _cnt_exc:
+            logger.warning("Failed to increment message count: %s", _cnt_exc)
+
         return Response(
             content='<?xml version=\'1.0\'?><Response></Response>',
             media_type="text/xml",
@@ -615,8 +665,52 @@ async def telegram_webhook(request: Request, slug: str):
 
         logger.info("Telegram inbound %s [%s]: %s", msg.from_number, slug, msg.text[:80])
 
+        # ── Billing enforcement ───────────────────────────────────────────
+        # For Telegram: check both message quota (429) and channel access (403).
+        # Send a Telegram reply instead of a TwiML response.
+        try:
+            async with AsyncSessionLocal() as _billing_db:
+                await enforce_message_limit(slug, "telegram", _billing_db)
+        except HTTPException as _billing_exc:
+            _detail = (
+                _billing_exc.detail
+                if isinstance(_billing_exc.detail, dict)
+                else {}
+            )
+            _upgrade_url = f"{Config.FRONTEND_URL}/billing"
+            if _billing_exc.status_code == 429:
+                _reply_text = _detail.get(
+                    "message",
+                    f"Aapka message quota khatam ho gaya. "
+                    f"Plan upgrade karein: {_upgrade_url}",
+                )
+            elif _billing_exc.status_code == 403:
+                _reply_text = (
+                    f"Aapke plan mein Telegram shamil nahi. "
+                    f"Business ya Pro plan lein: {_upgrade_url}"
+                )
+            else:
+                raise
+            from bazaarbot.channels.base import ChannelResponse
+            _tg_reply = ChannelResponse(
+                text=_reply_text,
+                channel=ChannelType.TELEGRAM,
+                to_number=msg.from_number,
+            )
+            await telegram_ch.send_message(_tg_reply)
+            return Response(content="OK")
+
         # Route through the unified channel handler
         await handle_channel_message(msg)
+
+        # Increment message counter after successful processing.
+        try:
+            async with AsyncSessionLocal() as _cnt_db:
+                await increment_message_count(slug, _cnt_db)
+                await _cnt_db.commit()
+        except Exception as _cnt_exc:
+            logger.warning("Failed to increment message count: %s", _cnt_exc)
+
         return Response(content="OK")
 
     except Exception as exc:
@@ -638,6 +732,73 @@ def _require_jwt(
     """FastAPI dependency that validates a Bearer JWT and returns its payload."""
     from bazaarbot.auth.auth_service import decode_access_token
     return decode_access_token(credentials.credentials)
+
+
+# ── Billing sandbox test endpoint ─────────────────────────────────────────
+
+@app.get("/api/billing/webhook-test")
+async def billing_webhook_test(
+    plan: str = "business",
+    jwt_payload: dict = Depends(_require_jwt),
+    db: AsyncSession = Depends(billing_get_db),
+):
+    """Simulate a successful payment and activate a subscription (sandbox only).
+
+    Activates the requested plan for the authenticated tenant without any
+    real money changing hands.  Useful for integration testing.
+
+    Query params:
+        plan — ``"starter"`` | ``"business"`` | ``"pro"``  (default: business)
+
+    Requires:
+        Bearer JWT with role ``admin`` or ``superadmin``.
+        ``APP_ENV`` must NOT be ``"production"``.
+    """
+    if Config.APP_ENV == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sandbox test endpoint is not available in production.",
+        )
+
+    role = jwt_payload.get("role", "")
+    if role not in ("admin", "superadmin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required for webhook test.",
+        )
+
+    from bazaarbot.billing.plan_config import PLANS
+    if plan not in PLANS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid plan '{plan}'. Valid options: {', '.join(PLANS)}.",
+        )
+
+    from bazaarbot.billing.payment_service import activate_subscription
+
+    tenant_slug: str = jwt_payload.get("sub", "")
+    gateway_ref = f"SANDBOX-TEST-{tenant_slug.upper()}-{plan.upper()}"
+
+    sub = await activate_subscription(
+        db=db,
+        tenant_slug=tenant_slug,
+        plan_id=plan,
+        gateway="free",
+        gateway_ref=gateway_ref,
+    )
+
+    logger.info(
+        "Sandbox webhook test: tenant=%s plan=%s ref=%s",
+        tenant_slug, plan, gateway_ref,
+    )
+
+    return JSONResponse(
+        {
+            "status": "success",
+            "message": f"Sandbox test: '{plan}' plan activated for '{tenant_slug}'.",
+            "subscription": sub.to_dict() if sub else None,
+        }
+    )
 
 
 @app.get("/api/nlp/status")
